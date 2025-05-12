@@ -39,18 +39,18 @@ local function find_file_namespace()
   return matches[1]
 end
 
-local test_method_query = vim.treesitter.query.parse(
-  "c_sharp",
-  [[
-      (method_declaration
-        (attribute_list
-          (attribute name:
-            (identifier) @attr
-              (#match? @attr "^(Test|TestCase)$")))) @node
-  ]]
-)
-
 local function matches_with_test_methods(matches, buf)
+  local test_method_query = vim.treesitter.query.parse(
+    "c_sharp",
+    [[
+        (method_declaration
+          (attribute_list
+            (attribute name:
+              (identifier) @attr
+                (#match? @attr "^(Test|TestCase)$")))) @node
+    ]]
+  )
+
   return vim
     .iter(matches)
     :filter(function(match)
