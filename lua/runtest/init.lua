@@ -38,6 +38,7 @@ end
 
 --- @class runtest.Config
 --- @field open_output_on_failure boolean
+--- @field close_output_on_success boolean
 --- @field windows { output: WindowProfile, terminal: WindowProfile }
 --- @field filetypes { [string]: RunnerConfig }
 
@@ -61,6 +62,7 @@ function Runner.new()
   self.output_window = nil
   self.config = {
     open_output_on_failure = false,
+    close_output_on_success = false,
     windows = {
       output = {
         vertical = true,
@@ -146,6 +148,10 @@ function Runner:tests_finished(exit_code, output_lines, profile, detail_lines)
 
   if failed and self.config.open_output_on_failure then
     self:open_output_window()
+  end
+
+  if not failed and self.config.close_output_on_success then
+    output_window:close()
   end
 end
 

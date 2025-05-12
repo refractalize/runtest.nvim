@@ -324,4 +324,12 @@ function OutputWindow:open(new_window_command)
   end
 end
 
+function OutputWindow:close()
+  local current_window = self:current_window()
+
+  if current_window then
+    vim.api.nvim_win_close(current_window, true)
+  end
+end
+
 return OutputWindow
