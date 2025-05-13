@@ -17,7 +17,7 @@ local OutputHistory = require("runtest.output_history")
 --- @field runner_config runtest.RunnerConfig
 
 --- @class runtest.RunnerConfig
---- @field args string[]
+--- @field args string[]?
 --- @field name string
 --- @field file_patterns (string | fun(profile: runtest.Profile, line: string): ([string, string, string, string] | nil))[]
 --- @field line_tests fun(): runtest.Profile

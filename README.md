@@ -27,24 +27,6 @@ A Neovim plugin for running tests directly within your editor.
 
 ## Installation
 
-Using [packer.nvim](https://github.com/wbthomason/packer.nvim):
-
-```lua
-use {
-  'runtest.nvim',
-  requires = {
-    -- Optional: for colorized output
-    'm00qek/baleia.nvim',
-    -- Optional: for fzf-lua integration
-    'ibhagwan/fzf-lua',
-    -- Optional: for DAP integration
-    'mfussenegger/nvim-dap',
-    -- Optional: for Python DAP integration
-    'mfussenegger/nvim-dap-python',
-  }
-}
-```
-
 Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
@@ -60,6 +42,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- Optional: for Python DAP integration
     'mfussenegger/nvim-dap-python',
   }
+  --- @type runtest.PartialConfig
   opts = {
   }
 }

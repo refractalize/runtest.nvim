@@ -10,8 +10,13 @@
 --- @field min? number --- The minimum size of the window in lines
 --- @field max? number --- The maximum size of the window in lines
 
---- @class (exact) runtest.PartialRunnerConfig
---- @field args? string[] --- Extra arguments to pass to the runner
+--- @class runtest.PartialRunnerConfig
+--- @field args? string[]
+--- @field name? string
+--- @field file_patterns? (string | fun(profile: runtest.Profile, line: string): ([string, string, string, string] | nil))[]
+--- @field line_tests? fun(): runtest.Profile
+--- @field all_tests? fun(): runtest.Profile
+--- @field file_tests? fun(): runtest.Profile
 local M = {}
 
 return M
