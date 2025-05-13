@@ -3,6 +3,7 @@ local ns_id = vim.api.nvim_create_namespace(namespace_name)
 local OutputWindow = require("runtest.output_window")
 local OutputLines = require("runtest.output_lines")
 local window_layout = require("runtest.window_layout")
+local OutputHistory = require("runtest.output_history")
 
 --- @class StartConfig
 --- @field debugger? boolean
@@ -54,6 +55,7 @@ end
 --- @field last_ext_mark number | nil
 --- @field terminal_buf number | nil
 --- @field config runtest.Config
+--- @field output_history OutputHistory
 local Runner = {}
 Runner.__index = Runner
 
@@ -84,6 +86,7 @@ function Runner.new()
       javascript = require("runtest.runners.jest"),
     },
   }
+  self.output_history = require("runtest.output_history"):new()
   return self
 end
 
@@ -106,17 +109,30 @@ function Runner:set_last_profile(profile)
   self.last_ext_mark = vim.api.nvim_buf_set_extmark(self.last_buffer, ns_id, cursor[1] - 1, cursor[2], {})
 end
 
+local function current_time()
+  local seconds, microseconds = vim.uv.gettimeofday()
+  return { sec = seconds, usec = microseconds }
+end
+
 --- @param profile Profile
 --- @param debug_spec dap.Configuration
 function Runner:debug(profile, debug_spec)
   local dap = require("dap")
   local listen = type(debug_spec) == 'table' and debug_spec.request ~= "attach"
+  local start_time = current_time()
 
   local output_lines = OutputLines:new()
 
   dap.listeners.before["event_exited"][namespace_name] = function(_session, body)
     if listen then
-      self:tests_finished(body.exitCode, output_lines:get_lines(), profile)
+      self:tests_finished({
+        output_lines = output_lines:get_lines(),
+        exit_code = body.exit_code,
+        profile = profile,
+        start_time = start_time,
+        end_time = current_time(),
+        debug_spec = debug_spec,
+      })
     end
   end
 
@@ -131,33 +147,36 @@ function Runner:debug(profile, debug_spec)
   dap.run(debug_spec)
 end
 
---- @param exit_code number
---- @param output_lines string[]
---- @param profile Profile
---- @param detail_lines? string[]
-function Runner:tests_finished(exit_code, output_lines, profile, detail_lines)
-  local failed = exit_code ~= 0
+--- @param entry OutputHistoryEntry
+function Runner:tests_finished(entry)
+  local failed = entry.exit_code ~= 0
   if failed then
     vim.notify("Tests failed", vim.log.levels.ERROR)
   else
     vim.notify("Tests passed", vim.log.levels.INFO)
   end
 
-  local output_window = self:get_output_window()
-  output_window:set_lines(vim.list_extend(detail_lines or {}, output_lines), profile)
+  self.output_history:add_entry(entry)
+  self:show_output_history_entry(entry)
 
   if failed and self.config.open_output_on_failure then
     self:open_output_window()
   end
 
   if not failed and self.config.close_output_on_success then
+    local output_window = self:get_output_window()
     output_window:close()
   end
 end
 
---- @param new_window_command string|nil The VIM command to run to create the window, default's to `vsplit`
-function Runner:open_output_window(new_window_command)
-  self:get_output_window():open(new_window_command or "vsplit")
+function Runner:show_current_output_history_entry()
+  local entry = self.output_history:get_current_entry()
+
+  if entry == nil then
+    return
+  end
+
+  self:show_output_history_entry(entry)
 end
 
 --- @param job_spec RunSpec
@@ -175,7 +194,64 @@ local function render_command_line(job_spec)
     return vim.fn.shellescape(arg)
   end, job_spec[1]))
 
-  return { env_str and env_str .. " " .. command_str or command_str }
+  return {
+    "Command: " .. (env_str and env_str .. " " .. command_str or command_str),
+  }
+end
+
+local function time_diff_in_microseconds(start_time, end_time)
+  local sec_diff = end_time.sec - start_time.sec
+  local usec_diff = end_time.usec - start_time.usec
+  return sec_diff * 1000000 + usec_diff
+end
+
+local function render_entry_timing(entry)
+  local start_seconds = entry.start_time.sec
+  local end_seconds = entry.end_time.sec
+  local start_time = os.date("%Y-%m-%d %H:%M:%S", start_seconds)
+  local end_time = os.date("%Y-%m-%d %H:%M:%S", end_seconds)
+  local duration_ms = math.floor(time_diff_in_microseconds(entry.start_time, entry.end_time) / 1000)
+  return {
+    "Start time: " .. start_time,
+    "End time: " .. end_time,
+    "Duration: " .. duration_ms .. "ms",
+  }
+end
+
+function Runner:show_output_history_entry(entry)
+  local output_window = self:get_output_window()
+  local detail_lines = entry.run_spec and render_command_line(entry.run_spec) or {}
+  local timing = render_entry_timing(entry)
+  output_window:set_lines(
+    vim.list_extend(
+      vim.list_extend(
+        vim.list_extend(
+          detail_lines,
+          timing
+        ),
+        { "" }
+      ),
+      entry.output_lines
+    ),
+    entry.profile
+  )
+end
+
+function Runner:next_output_history()
+  self.output_history:next_entry()
+
+  self:show_current_output_history_entry()
+end
+
+function Runner:previous_output_history()
+  self.output_history:previous_entry()
+
+  self:show_current_output_history_entry()
+end
+
+--- @param new_window_command string|nil The VIM command to run to create the window, default's to `vsplit`
+function Runner:open_output_window(new_window_command)
+  self:get_output_window():open(new_window_command or "vsplit")
 end
 
 --- @param job_spec RunSpec
@@ -202,9 +278,10 @@ local function follow_latest_output()
 end
 
 --- @param profile Profile
---- @param job_spec RunSpec
-function Runner:run_terminal(profile, job_spec)
-  job_spec = parse_job_spec(job_spec)
+--- @param run_spec RunSpec
+function Runner:run_terminal(profile, run_spec)
+  run_spec = parse_job_spec(run_spec)
+  local start_time = current_time()
 
   local output_lines = OutputLines:new(function(data)
     return data:gsub("\r$", ""):gsub("\x1b%[%?1h\x1b=", "")
@@ -226,22 +303,24 @@ function Runner:run_terminal(profile, job_spec)
     self.terminal_buf = nil
     self.terminal_win = nil
 
-    self:tests_finished(
-      exit_code,
-      output_lines:get_lines(),
-      profile,
-      render_command_line(job_spec)
-    )
+    self:tests_finished({
+      output_lines = output_lines:get_lines(),
+      exit_code = exit_code,
+      profile = profile,
+      start_time = start_time,
+      end_time = current_time(),
+      run_spec = run_spec,
+    })
   end
 
-  local options = vim.tbl_extend("keep", job_spec[3] or {}, {
+  local options = vim.tbl_extend("keep", run_spec[3] or {}, {
     tty = true,
   })
-  local command = options.tty and vim.list_extend({ exec_no_tty }, job_spec[1]) or job_spec[1]
+  local command = options.tty and vim.list_extend({ exec_no_tty }, run_spec[1]) or run_spec[1]
 
   vim.fn.termopen(
     command,
-    vim.tbl_extend("force", job_spec[2] or {}, {
+    vim.tbl_extend("force", run_spec[2] or {}, {
       on_exit = on_exit,
       stdout_buffered = true,
       on_stdout = on_data,
@@ -272,6 +351,7 @@ end
 --- @param job_spec RunSpec
 function Runner:run_job(profile, job_spec)
   job_spec = parse_job_spec(job_spec)
+  local start_time = current_time()
 
   local output_lines = OutputLines:new(function(data)
     return data:gsub("\r$", "")
@@ -282,7 +362,14 @@ function Runner:run_job(profile, job_spec)
   end
 
   local on_exit = function(_, exit_code)
-    self:tests_finished(exit_code, output_lines:get_lines(), profile.runner_config.file_patterns)
+    self:tests_finished({
+      output_lines = output_lines:get_lines(),
+      exit_code = exit_code,
+      profile = profile,
+      start_time = start_time,
+      end_time = current_time(),
+      job_spec = job_spec,
+    })
   end
 
   local no_tty_command = vim.list_extend({ exec_no_tty }, job_spec[1])
@@ -562,6 +649,18 @@ function M.send_entries_to_fzf()
       actions = fzf_lua.config.globals.actions.files,
       previewer = "builtin",
     })
+  end)
+end
+
+function M.next_output_history()
+  error_wrapper(function()
+    runner:next_output_history()
+  end)
+end
+
+function M.previous_output_history()
+  error_wrapper(function()
+    runner:previous_output_history()
   end)
 end
 

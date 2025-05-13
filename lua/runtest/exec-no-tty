@@ -3,6 +3,4 @@
 set -e
 set -o pipefail
 
-echo "Running:" "$@"
-
 "$@" 2>&1 | cat
