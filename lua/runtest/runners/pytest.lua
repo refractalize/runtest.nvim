@@ -1,7 +1,7 @@
 local python_ts = require("runtest.languages.python")
 local utils = require("runtest.utils")
 
---- @class M: RunnerConfig
+--- @class M: runtest.RunnerConfig
 local M = {}
 
 M.file_patterns = {
@@ -11,9 +11,9 @@ M.file_patterns = {
 
 M.name = 'pytest'
 
---- @param runner_config RunnerConfig
+--- @param runner_config runtest.RunnerConfig
 --- @param args string[]
---- @param start_config StartConfig
+--- @param start_config runtest.StartConfig
 local function pytest_args(runner_config, args, start_config)
   return utils.build_command_line({ "--color=yes" }, args, runner_config.args, start_config.args)
 end
@@ -45,7 +45,7 @@ local function pytest_profile(runner_config, args)
   }
 end
 
---- @param runner_config RunnerConfig
+--- @param runner_config runtest.RunnerConfig
 --- @returns Profile
 function M.line_tests(runner_config)
   local filename = vim.fn.expand("%:p")
@@ -55,13 +55,13 @@ function M.line_tests(runner_config)
   return pytest_profile(runner_config, args)
 end
 
---- @param runner_config RunnerConfig
+--- @param runner_config runtest.RunnerConfig
 --- @returns Profile
 function M.all_tests(runner_config)
   return pytest_profile(runner_config, {})
 end
 
---- @param runner_config RunnerConfig
+--- @param runner_config runtest.RunnerConfig
 --- @returns Profile
 function M.file_tests(runner_config)
   local filename = vim.fn.expand("%:p")

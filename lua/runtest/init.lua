@@ -5,24 +5,24 @@ local OutputLines = require("runtest.output_lines")
 local window_layout = require("runtest.window_layout")
 local OutputHistory = require("runtest.output_history")
 
---- @class StartConfig
+--- @class runtest.StartConfig
 --- @field debugger? boolean
 --- @field args? string[]
 
---- @alias RunSpec [string[], table?, table?]
+--- @alias runtest.RunSpec [string[], table?, table?]
 
---- @class Profile
---- @field debug_spec (fun(start_config: StartConfig, runner: Runner): dap.Configuration)
---- @field run_spec (fun(start_config: StartConfig, runner: Runner): RunSpec)
---- @field runner_config RunnerConfig
+--- @class runtest.Profile
+--- @field debug_spec (fun(start_config: runtest.StartConfig, runner: runtest.Runner): dap.Configuration)
+--- @field run_spec (fun(start_config: runtest.StartConfig, runner: runtest.Runner): runtest.RunSpec)
+--- @field runner_config runtest.RunnerConfig
 
---- @class RunnerConfig
+--- @class runtest.RunnerConfig
 --- @field args string[]
 --- @field name string
---- @field file_patterns (string | fun(profile: Profile, line: string): ([string, string, string, string] | nil))[]
---- @field line_tests fun(): Profile
---- @field all_tests fun(): Profile
---- @field file_tests fun(): Profile
+--- @field file_patterns (string | fun(profile: runtest.Profile, line: string): ([string, string, string, string] | nil))[]
+--- @field line_tests fun(): runtest.Profile
+--- @field all_tests fun(): runtest.Profile
+--- @field file_tests fun(): runtest.Profile
 
 local exec_no_tty = debug.getinfo(1, "S").source:sub(2):match("(.*/)") .. "exec-no-tty"
 
@@ -40,22 +40,17 @@ end
 --- @class runtest.Config
 --- @field open_output_on_failure boolean
 --- @field close_output_on_success boolean
---- @field windows { output: WindowProfile, terminal: WindowProfile }
---- @field filetypes { [string]: RunnerConfig }
+--- @field windows { output: runtest.WindowProfile, terminal: runtest.WindowProfile }
+--- @field filetypes { [string]: runtest.RunnerConfig }
 
---- @class runtest.UserConfig
---- @field open_output_on_failure boolean | nil
---- @field windows { output: WindowProfile, terminal: WindowProfile } | nil
---- @field filetypes { [string]: RunnerConfig } | nil
-
---- @class Runner
+--- @class runtest.Runner
 --- @field output_window OutputWindow
---- @field last_profile Profile | nil
+--- @field last_profile runtest.Profile | nil
 --- @field last_buffer number | nil
 --- @field last_ext_mark number | nil
 --- @field terminal_buf number | nil
 --- @field config runtest.Config
---- @field output_history OutputHistory
+--- @field output_history runtest.OutputHistory
 local Runner = {}
 Runner.__index = Runner
 
@@ -95,7 +90,7 @@ function Runner:setup(config)
   M.config = self.config
 end
 
---- @param profile Profile
+--- @param profile runtest.Profile
 function Runner:set_last_profile(profile)
   if self.last_ext_mark ~= nil then
     if self.last_buffer ~= nil and vim.api.nvim_buf_is_valid(self.last_buffer) then
@@ -114,7 +109,7 @@ local function current_time()
   return { sec = seconds, usec = microseconds }
 end
 
---- @param profile Profile
+--- @param profile runtest.Profile
 --- @param debug_spec dap.Configuration
 function Runner:debug(profile, debug_spec)
   local dap = require("dap")
@@ -147,7 +142,7 @@ function Runner:debug(profile, debug_spec)
   dap.run(debug_spec)
 end
 
---- @param entry OutputHistoryEntry
+--- @param entry runtest.OutputHistoryEntry
 function Runner:tests_finished(entry)
   local failed = entry.exit_code ~= 0
   if failed then
@@ -169,17 +164,7 @@ function Runner:tests_finished(entry)
   end
 end
 
-function Runner:show_current_output_history_entry()
-  local entry = self.output_history:get_current_entry()
-
-  if entry == nil then
-    return
-  end
-
-  self:show_output_history_entry(entry)
-end
-
---- @param job_spec RunSpec
+--- @param job_spec runtest.RunSpec
 --- @returns string[]
 local function render_command_line(job_spec)
   local env = (job_spec[2] or {}).env
@@ -238,15 +223,15 @@ function Runner:show_output_history_entry(entry)
 end
 
 function Runner:next_output_history()
-  self.output_history:next_entry()
+  local entry = self.output_history:next_entry()
 
-  self:show_current_output_history_entry()
+  self:show_output_history_entry(entry)
 end
 
 function Runner:previous_output_history()
-  self.output_history:previous_entry()
+  local entry = self.output_history:previous_entry()
 
-  self:show_current_output_history_entry()
+  self:show_output_history_entry(entry)
 end
 
 --- @param new_window_command string|nil The VIM command to run to create the window, default's to `vsplit`
@@ -254,7 +239,7 @@ function Runner:open_output_window(new_window_command)
   self:get_output_window():open(new_window_command or "vsplit")
 end
 
---- @param job_spec RunSpec
+--- @param job_spec runtest.RunSpec
 local function parse_job_spec(job_spec)
   if type(job_spec) ~= "table" then
     error("expected run_spec to be a table, got " .. type(job_spec))
@@ -277,8 +262,8 @@ local function follow_latest_output()
   vim.cmd.normal("G")
 end
 
---- @param profile Profile
---- @param run_spec RunSpec
+--- @param profile runtest.Profile
+--- @param run_spec runtest.RunSpec
 function Runner:run_terminal(profile, run_spec)
   run_spec = parse_job_spec(run_spec)
   local start_time = current_time()
@@ -347,8 +332,8 @@ local function optional_combine(fn1, fn2)
   end
 end
 
---- @param profile Profile
---- @param job_spec RunSpec
+--- @param profile runtest.Profile
+--- @param job_spec runtest.RunSpec
 function Runner:run_job(profile, job_spec)
   job_spec = parse_job_spec(job_spec)
   local start_time = current_time()
@@ -408,14 +393,14 @@ function Runner:open_terminal_window(new_window_command)
   end
 end
 
---- @param runner_config RunnerConfig
+--- @param runner_config runtest.RunnerConfig
 local function validate_runner_config(runner_config)
   if type(runner_config.name) ~= "string" then
     error({ message = "RunnerConfig.name must be a string", level = vim.log.levels.ERROR })
   end
 end
 
---- @return RunnerConfig
+--- @return runtest.RunnerConfig
 function Runner:runner_config()
   local filetype = vim.bo.filetype
   local runner_config = self.config.filetypes[filetype]
@@ -429,8 +414,8 @@ function Runner:runner_config()
   return runner_config
 end
 
---- @param profile Profile
---- @param start_config StartConfig
+--- @param profile runtest.Profile
+--- @param start_config runtest.StartConfig
 function Runner:start_profile(profile, start_config)
   if start_config.debugger then
     local debug_spec = profile.debug_spec(start_config, self)
@@ -441,8 +426,8 @@ function Runner:start_profile(profile, start_config)
   end
 end
 
---- @param start_config StartConfig | nil
---- @return StartConfig
+--- @param start_config runtest.StartConfig | nil
+--- @return runtest.StartConfig
 local function parse_start_config(start_config)
   return vim.tbl_extend("force", {
     debugger = false,
@@ -451,7 +436,7 @@ local function parse_start_config(start_config)
 end
 
 --- @param profile_name string
---- @return Profile
+--- @return runtest.Profile
 function Runner:resolve_profile(profile_name)
   local runner_config = self:runner_config()
 
@@ -468,7 +453,7 @@ function Runner:resolve_profile(profile_name)
 end
 
 --- @param profile_name string
---- @param start_config StartConfig | nil
+--- @param start_config runtest.StartConfig | nil
 function Runner:start_profile_name(profile_name, start_config)
   start_config = parse_start_config(start_config)
 
@@ -480,7 +465,7 @@ function Runner:start_profile_name(profile_name, start_config)
 end
 
 --- @param profile_name string
---- @param start_config StartConfig | nil
+--- @param start_config runtest.StartConfig | nil
 function Runner:get_profile_command(profile_name, start_config)
   start_config = parse_start_config(start_config)
 
@@ -489,7 +474,7 @@ function Runner:get_profile_command(profile_name, start_config)
   return profile.run_spec(start_config, self)
 end
 
---- @param start_config StartConfig | nil
+--- @param start_config runtest.StartConfig | nil
 function Runner:debug_last(start_config)
   if start_config then
     start_config.debugger = true
@@ -500,7 +485,7 @@ function Runner:debug_last(start_config)
   self:run_last(start_config)
 end
 
---- @param start_config StartConfig | nil
+--- @param start_config runtest.StartConfig | nil
 function Runner:run_last(start_config)
   if self.last_profile == nil then
     error({ message = "No last test", level = vim.log.levels.INFO })
@@ -594,7 +579,7 @@ function M.goto_last()
   end)
 end
 
---- @return Profile | nil
+--- @return runtest.Profile | nil
 function M.last_profile()
   return runner.last_profile
 end

@@ -1,10 +1,10 @@
---- @class WindowProfile
+--- @class runtest.WindowProfile
 --- @field vertical boolean
 --- @field min number | nil
 --- @field max number | nil
 --- @field size number | nil
 
---- @param window_profile WindowProfile
+--- @param window_profile runtest.WindowProfile
 --- @param new boolean | nil
 local function open_window(window_profile, new)
   local new_split = new and "new" or "split"

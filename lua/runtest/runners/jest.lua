@@ -1,9 +1,9 @@
 local javascript_ts = require("runtest.languages.javascript")
 
---- @class JestProfile: Profile
+--- @class JestProfile: runtest.Profile
 --- @field cwd string
 
---- @class M: RunnerConfig
+--- @class M: runtest.RunnerConfig
 local M = {
   name = "jest",
   file_patterns = {
@@ -28,7 +28,7 @@ function get_node_root_directory()
 end
 
 --- @param args string[]
---- @param start_config StartConfig
+--- @param start_config runtest.StartConfig
 --- @param cwd string
 function run_jest(args, start_config, cwd)
   return {
@@ -65,24 +65,24 @@ function jest_profile(args)
   return {
     runner_config = M,
     cwd = cwd,
-    --- @param start_config StartConfig
+    --- @param start_config runtest.StartConfig
     debug_spec = function(start_config)
       return debug_jest(args, start_config)
     end,
-    --- @param start_config StartConfig
+    --- @param start_config runtest.StartConfig
     run_spec = function(start_config)
       return run_jest(args, start_config, cwd)
     end,
   }
 end
 
---- @param runner_config RunnerConfig
+--- @param runner_config runtest.RunnerConfig
 --- @returns Profile
 function M.all_tests(runner_config)
   return jest_profile({})
 end
 
---- @param runner_config RunnerConfig
+--- @param runner_config runtest.RunnerConfig
 --- @returns Profile
 function M.line_tests(runner_config)
   local test_context = javascript_ts.line_tests()

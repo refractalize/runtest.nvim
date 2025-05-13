@@ -1,7 +1,7 @@
 local csharp_ts = require("runtest.languages.csharp")
 local utils = require("runtest.utils")
 
---- @class M: RunnerConfig
+--- @class M: runtest.RunnerConfig
 local M = {
   name = "dotnet",
 }
@@ -27,10 +27,10 @@ local function buffer_csproj()
   error("No .csproj file found")
 end
 
---- @param profile Profile
+--- @param profile runtest.Profile
 --- @param command [string[], { env: table<string, string>, pty: boolean, on_stdout: fun(data: string[]) }]
 --- @param runner_config M
---- @param runner Runner
+--- @param runner runtest.Runner
 --- @returns fun(cb: fun(err: any, result: dap.Configuration))
 local function start_debugger(profile, command, runner_config, runner)
   return {
@@ -75,8 +75,8 @@ local function start_debugger(profile, command, runner_config, runner)
 end
 
 --- @param command string
---- @param runner_config RunnerConfig
---- @param start_config StartConfig
+--- @param runner_config runtest.RunnerConfig
+--- @param start_config runtest.StartConfig
 --- @returns string[]
 local function dotnet(command, runner_config, args, start_config)
   return {
@@ -85,8 +85,8 @@ local function dotnet(command, runner_config, args, start_config)
   }
 end
 
---- @param runner_config RunnerConfig
---- @param start_config StartConfig
+--- @param runner_config runtest.RunnerConfig
+--- @param start_config runtest.StartConfig
 --- @returns string[]
 local function dotnet_test(runner_config, args, start_config)
   return dotnet("test", runner_config, args, start_config)
@@ -102,13 +102,13 @@ local function dotnet_test_profile(runner_config, args)
 
   P.runner_config = M
 
-  --- @param start_config StartConfig
-  --- @param runner Runner
+  --- @param start_config runtest.StartConfig
+  --- @param runner runtest.Runner
   function P.debug_spec(start_config, runner)
     return start_debugger(P, dotnet_test(runner_config, args, start_config), runner_config, runner)
   end
 
-  --- @param start_config StartConfig
+  --- @param start_config runtest.StartConfig
   function P.run_spec(start_config)
     return dotnet_test(runner_config, args, start_config)
   end
@@ -132,7 +132,7 @@ local function dotnet_build_profile(runner_config, args)
   return P
 end
 
---- @returns Profile
+--- @returns runtest.Profile
 function M.line_tests(runner_config)
   local line_tests = csharp_ts.line_tests()
 
@@ -146,7 +146,7 @@ function M.line_tests(runner_config)
   })
 end
 
---- @returns Profile
+--- @returns runtest.Profile
 function M.file_tests(runner_config)
   local file_tests = csharp_ts.file_tests()
 

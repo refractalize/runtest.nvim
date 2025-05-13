@@ -57,7 +57,7 @@ function OutputWindow:is_output_window_focussed()
   return vim.list_contains(windows, current_window)
 end
 
---- @param profile Profile
+--- @param profile runtest.Profile
 --- @param line string
 --- @return [string, string, string, string] | nil
 function OutputWindow:match_filename(profile, line)
@@ -74,7 +74,7 @@ function OutputWindow:match_filename(profile, line)
 end
 
 --- @param entry Entry
---- @return number
+--- @return number | nil
 function create_entry_ext_mark(entry)
   local success, extmark_id = pcall(vim.api.nvim_buf_set_extmark, entry.bufnr, sign_ns_id, entry.line_number - 1, entry.column_number - 1, {})
   if success then
@@ -181,7 +181,7 @@ function OutputWindow:goto_previous_entry()
   end
 end
 
---- @param profile Profile
+--- @param profile runtest.Profile
 function OutputWindow:parse_filenames(profile)
   local lines = vim.api.nvim_buf_get_lines(self.buf, 0, -1, false)
 
@@ -230,16 +230,38 @@ function OutputWindow:set_entry_signs()
   end
 end
 
+local function create_colorizer()
+  local success, baleia = pcall(require, "baleia")
+
+  if success then
+    local b = baleia.setup()
+
+    return function(bufnr)
+      b.once(bufnr)
+    end
+  else
+    return function()
+      -- No colorizer available
+    end
+  end
+end
+
+local colorizer = create_colorizer()
+
+--- @param bufnr number
+local function colorize_output(bufnr)
+  colorizer(bufnr)
+end
+
 --- @param lines string[]
---- @param profile Profile
+--- @param profile runtest.Profile
 function OutputWindow:set_lines(lines, profile)
   vim.api.nvim_buf_clear_namespace(self.buf, sign_ns_id, 0, -1)
 
   vim.api.nvim_set_option_value("modifiable", true, { buf = self.buf })
 
   vim.api.nvim_buf_set_lines(self.buf, 0, -1, false, lines)
-  local baleia = require("baleia").setup()
-  baleia.once(self.buf)
+  colorize_output(self.buf)
 
   vim.api.nvim_set_option_value("modifiable", false, { buf = self.buf })
 
