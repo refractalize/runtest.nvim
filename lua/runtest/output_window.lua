@@ -17,7 +17,7 @@ vim.api.nvim_set_hl(0, sign_highlight, {
 ---@field column_number number
 ---@field output_line_number number
 ---@field output_line string
----@field bufnr number
+---@field buf number
 ---@field ext_mark? number
 
 ---@class OutputWindow
@@ -32,12 +32,12 @@ function OutputWindow:setup(config)
   self.config = vim.tbl_deep_extend("force", self.config, config)
 end
 
---- @param bufnr number
-function OutputWindow:get_target_window_id(bufnr)
+--- @param buf number
+function OutputWindow:get_target_window_id(buf)
   local current_window_id = vim.api.nvim_get_current_win()
 
   if current_window_id == self:current_window() then
-    local buffer_window = find_window_in_current_tab(bufnr)
+    local buffer_window = find_window_in_current_tab(buf)
 
     if buffer_window then
       return buffer_window
@@ -76,16 +76,16 @@ end
 --- @param entry Entry
 --- @return number | nil
 function create_entry_ext_mark(entry)
-  local success, extmark_id = pcall(vim.api.nvim_buf_set_extmark, entry.bufnr, sign_ns_id, entry.line_number - 1, entry.column_number - 1, {})
+  local success, extmark_id = pcall(vim.api.nvim_buf_set_extmark, entry.buf, sign_ns_id, entry.line_number - 1, entry.column_number - 1, {})
   if success then
     return extmark_id
   end
 end
 
---- @param bufnr number
-function OutputWindow:load_buffer_ext_marks(bufnr)
+--- @param buf number
+function OutputWindow:load_buffer_ext_marks(buf)
   for i, entry in ipairs(self.entries) do
-    if entry.bufnr == bufnr and not entry.ext_mark then
+    if entry.buf == buf and not entry.ext_mark then
       entry.ext_mark = create_entry_ext_mark(entry)
     end
   end
@@ -93,23 +93,23 @@ end
 
 function OutputWindow:goto_entry(entry)
   if vim.fn.filereadable(entry.filename) > 0 then
-    if vim.fn.bufloaded(entry.bufnr) == 0 then
-      vim.fn.bufload(entry.bufnr)
-      self:load_buffer_ext_marks(entry.bufnr)
+    if vim.fn.bufloaded(entry.buf) == 0 then
+      vim.fn.bufload(entry.buf)
+      self:load_buffer_ext_marks(entry.buf)
     end
 
-    local target_window_id = self:get_target_window_id(entry.bufnr)
+    local target_window_id = self:get_target_window_id(entry.buf)
     vim.api.nvim_set_current_win(target_window_id)
 
-    if vim.api.nvim_get_current_buf() ~= entry.bufnr then
-      vim.api.nvim_set_current_buf(entry.bufnr)
+    if vim.api.nvim_get_current_buf() ~= entry.buf then
+      vim.api.nvim_set_current_buf(entry.buf)
     end
 
     if entry.ext_mark == nil then
       return
     end
 
-    local position = vim.api.nvim_buf_get_extmark_by_id(entry.bufnr, sign_ns_id, entry.ext_mark, {})
+    local position = vim.api.nvim_buf_get_extmark_by_id(entry.buf, sign_ns_id, entry.ext_mark, {})
     vim.api.nvim_win_set_cursor(target_window_id, { position[1] + 1, position[2] })
 
     self.current_entry_index = entry.index
@@ -199,19 +199,19 @@ function OutputWindow:parse_filenames(profile)
 
       local absolute_filename = vim.fn.fnamemodify(filename, ":p")
       local file_uri = vim.uri_from_fname(absolute_filename)
-      local bufnr = vim.uri_to_bufnr(file_uri)
+      local buf = vim.uri_to_bufnr(file_uri)
 
       local entry = {
         index = index,
         filename = filename,
-        bufnr = bufnr,
+        buf = buf,
         line_number = line_number,
         column_number = column_number,
         output_line_number = output_line_number,
         output_line = line,
       }
 
-      if vim.fn.bufloaded(bufnr) == 1 then
+      if vim.fn.bufloaded(buf) == 1 then
         entry.ext_mark = create_entry_ext_mark(entry)
       end
 
@@ -236,8 +236,8 @@ local function create_colorizer()
   if success then
     local b = baleia.setup()
 
-    return function(bufnr)
-      b.once(bufnr)
+    return function(buf)
+      b.once(buf)
     end
   else
     return function()
@@ -248,9 +248,9 @@ end
 
 local colorizer = create_colorizer()
 
---- @param bufnr number
-local function colorize_output(bufnr)
-  colorizer(bufnr)
+--- @param buf number
+local function colorize_output(buf)
+  colorizer(buf)
 end
 
 --- @param lines string[]
@@ -317,11 +317,11 @@ function OutputWindow:new()
   return self
 end
 
---- @param bufnr number
+--- @param buf number
 --- @return number | nil
-function find_window_in_current_tab(bufnr)
+function find_window_in_current_tab(buf)
   local current_tab = vim.api.nvim_get_current_tabpage()
-  local windows = vim.fn.win_findbuf(bufnr)
+  local windows = vim.fn.win_findbuf(buf)
 
   for _, window in ipairs(windows) do
     if vim.api.nvim_win_get_tabpage(window) == current_tab then
