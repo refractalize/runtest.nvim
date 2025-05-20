@@ -1,6 +1,12 @@
 --- @class runtest.OutputHistory
+--- @field history runtest.OutputHistoryEntry[]
+--- @field current_index number
+--- @field config runtest.OutputHistoryConfig
 local OutputHistory = {}
 OutputHistory.__index = OutputHistory
+
+--- @class runtest.OutputHistoryConfig
+--- @field max_entries number
 
 --- @class runtest.OutputHistoryEntry
 --- @field output_lines string[]
@@ -16,13 +22,20 @@ function OutputHistory:new()
   local self = setmetatable({}, OutputHistory)
   self.history = {}
   self.current_index = 1
-  self.max_entries = 10
+  self.config = {
+    max_entries = 10,
+  }
   return self
+end
+
+--- @param config runtest.OutputHistoryConfig
+function OutputHistory:setup(config)
+  self.config = vim.tbl_deep_extend("force", self.config, config or {})
 end
 
 --- @param entry runtest.OutputHistoryEntry
 function OutputHistory:add_entry(entry)
-  if #self.history >= self.max_entries then
+  if #self.history >= self.config.max_entries then
     table.remove(self.history, 1)
   end
   table.insert(self.history, entry)

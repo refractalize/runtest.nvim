@@ -40,6 +40,7 @@ end
 --- @class runtest.Config
 --- @field open_output_on_failure boolean
 --- @field close_output_on_success boolean
+--- @field history runtest.OutputHistoryConfig
 --- @field windows { output: runtest.WindowProfile, terminal: runtest.WindowProfile }
 --- @field filetypes { [string]: runtest.RunnerConfig }
 
@@ -60,6 +61,9 @@ function Runner.new()
   self.config = {
     open_output_on_failure = false,
     close_output_on_success = false,
+    history = {
+      max_entries = 10,
+    },
     windows = {
       output = {
         vertical = true,
@@ -81,12 +85,13 @@ function Runner.new()
       javascript = require("runtest.runners.jest"),
     },
   }
-  self.output_history = require("runtest.output_history"):new()
+  self.output_history = OutputHistory:new()
   return self
 end
 
 function Runner:setup(config)
   self.config = vim.tbl_deep_extend("force", self.config, config)
+  self.output_history:setup(config.history)
   M.config = self.config
 end
 
@@ -303,12 +308,13 @@ function Runner:run_terminal(profile, run_spec)
   })
   local command = options.tty and vim.list_extend({ exec_no_tty }, run_spec[1]) or run_spec[1]
 
-  vim.fn.termopen(
+  vim.fn.jobstart(
     command,
     vim.tbl_extend("force", run_spec[2] or {}, {
       on_exit = on_exit,
       stdout_buffered = true,
       on_stdout = on_data,
+      term = true,
     })
   )
 
