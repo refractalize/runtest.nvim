@@ -5,7 +5,7 @@ local javascript_ts = require("runtest.languages.javascript")
 
 --- @class M: runtest.RunnerConfig
 local M = {
-  name = "jest",
+  name = "vitest",
   file_patterns = {
     --- @param profile JestProfile
     --- @param line string
@@ -24,9 +24,9 @@ local M = {
 --- @param args string[]
 --- @param start_config runtest.StartConfig
 --- @param cwd string
-function run_jest(args, start_config, cwd)
+function run_vitest(args, start_config, cwd)
   return {
-    vim.list_extend({ "npm", "exec", "--", "jest" }, vim.list_extend(start_config.args or {}, args or {})),
+    vim.list_extend({ "npm", "exec", "--", "vitest", "run" }, vim.list_extend(start_config.args or {}, args or {})),
     {
       env = { ["FORCE_COLOR"] = "true" },
       cwd = cwd,
@@ -34,11 +34,11 @@ function run_jest(args, start_config, cwd)
   }
 end
 
-function debug_jest(args, start_config)
+function debug_vitest(args, start_config)
   return {
     type = "pwa-node",
     request = "launch",
-    name = "Debug Jest Tests",
+    name = "Debug Vitest Tests",
     trace = true, -- include debugger info
     runtimeExecutable = "node",
     runtimeArgs = vim.list_extend(
@@ -54,18 +54,18 @@ end
 
 --- @param args string[]
 --- @return JestProfile
-function jest_profile(args)
+function vitest_profile(args)
   local cwd = javascript_ts.get_node_root_directory()
   return {
     runner_config = M,
     cwd = cwd,
     --- @param start_config runtest.StartConfig
     debug_spec = function(start_config)
-      return debug_jest(args, start_config)
+      return debug_vitest(args, start_config)
     end,
     --- @param start_config runtest.StartConfig
     run_spec = function(start_config)
-      return run_jest(args, start_config, cwd)
+      return run_vitest(args, start_config, cwd)
     end,
   }
 end
@@ -73,7 +73,14 @@ end
 --- @param runner_config runtest.RunnerConfig
 --- @returns Profile
 function M.all_tests(runner_config)
-  return jest_profile({})
+  return vitest_profile({})
+end
+
+--- @param runner_config runtest.RunnerConfig
+--- @returns Profile
+function M.file_tests(runner_config)
+  local filename = vim.fn.expand("%:p")
+  return vitest_profile({ filename })
 end
 
 --- @param runner_config runtest.RunnerConfig
@@ -82,7 +89,7 @@ function M.line_tests(runner_config)
   local test_context = javascript_ts.line_tests()
   local pattern = vim.fn.join(test_context, " ")
   local test_filename = vim.fn.expand("%:p")
-  return jest_profile({ test_filename, "--testNamePattern", pattern })
+  return vitest_profile({ test_filename, "--testNamePattern", pattern })
 end
 
 return M

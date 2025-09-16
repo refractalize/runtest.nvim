@@ -56,7 +56,7 @@ local function line_tests()
     lang,
     [[
       (call_expression
-        function: ((identifier) @function_name (#match? @function_name "^(describe|test)$"))
+        function: ((identifier) @function_name (#match? @function_name "^(describe|test|it)$"))
         arguments: (arguments . (string) @description)) @node
     ]]
   )
@@ -70,6 +70,23 @@ local function line_tests()
   return test_names
 end
 
+--- @return string|nil
+function get_node_root_directory()
+  local current_directory = vim.fn.expand("%:p:h")
+
+  local node_modules = vim.fs.find("node_modules", {
+    path = current_directory,
+    upward = true,
+    type = "directory",
+    limit = 1,
+  })[1]
+
+  if node_modules then
+    return vim.fn.fnamemodify(node_modules, ":h")
+  end
+end
+
 return {
   line_tests = line_tests,
+  get_node_root_directory = get_node_root_directory,
 }

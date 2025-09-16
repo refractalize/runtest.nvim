@@ -42,7 +42,8 @@ end
 --- @field close_output_on_success boolean
 --- @field history runtest.OutputHistoryConfig
 --- @field windows { output: runtest.WindowProfile, terminal: runtest.WindowProfile }
---- @field filetypes { [string]: runtest.RunnerConfig }
+--- @field filetypes { [string]: runtest.RunnerConfig | string }
+--- @field runners { [string]: runtest.RunnerConfig }
 
 --- @class runtest.Runner
 --- @field output_window OutputWindow
@@ -76,13 +77,20 @@ function Runner.new()
       },
     },
     filetypes = {
-      cs = require("runtest.runners.dotnet"),
-      ruby = require('runtest.runners.rails'),
-      python = require("runtest.runners.pytest"),
-      typescriptreact = require("runtest.runners.jest"),
-      typescript = require("runtest.runners.jest"),
-      javascriptreact = require("runtest.runners.jest"),
-      javascript = require("runtest.runners.jest"),
+      cs = "dotnet",
+      ruby = "rails",
+      python = "pytest",
+      typescriptreact = "jest",
+      typescript = "jest",
+      javascriptreact = "jest",
+      javascript = "jest",
+    },
+    runners = {
+      dotnet = require("runtest.runners.dotnet"),
+      rails = require("runtest.runners.rails"),
+      pytest = require("runtest.runners.pytest"),
+      jest = require("runtest.runners.jest"),
+      vitest = require("runtest.runners.vitest"),
     },
   }
   self.output_history = OutputHistory:new()
@@ -118,7 +126,7 @@ end
 --- @param debug_spec dap.Configuration
 function Runner:debug(profile, debug_spec)
   local dap = require("dap")
-  local listen = type(debug_spec) == 'table' and debug_spec.request ~= "attach"
+  local listen = type(debug_spec) == "table" and debug_spec.request ~= "attach"
   local start_time = current_time()
 
   local output_lines = OutputLines:new()
@@ -213,16 +221,7 @@ function Runner:show_output_history_entry(entry)
   local detail_lines = entry.run_spec and render_command_line(entry.run_spec) or {}
   local timing = render_entry_timing(entry)
   output_window:set_lines(
-    vim.list_extend(
-      vim.list_extend(
-        vim.list_extend(
-          detail_lines,
-          timing
-        ),
-        { "" }
-      ),
-      entry.output_lines
-    ),
+    vim.list_extend(vim.list_extend(vim.list_extend(detail_lines, timing), { "" }), entry.output_lines),
     entry.profile
   )
 end
@@ -406,6 +405,17 @@ local function validate_runner_config(runner_config)
   end
 end
 
+--- @param self runtest.Runner
+--- @param runner_name string
+--- @return runtest.RunnerConfig
+local function lookup_runner_module(self, runner_name)
+  local runner_module = self.config.runners[runner_name]
+  if not runner_module then
+    error({ message = "No runner module for " .. runner_name, level = vim.log.levels.ERROR })
+  end
+  return runner_module
+end
+
 --- @return runtest.RunnerConfig
 function Runner:runner_config()
   local filetype = vim.bo.filetype
@@ -413,6 +423,17 @@ function Runner:runner_config()
 
   if runner_config == nil then
     error({ message = "No test runner configured for " .. filetype, level = vim.log.levels.WARN })
+  end
+
+  if type(runner_config) == "string" then
+    runner_config = lookup_runner_module(self, runner_config)
+  elseif type(runner_config) == "table" and #runner_config > 0 then
+    local merged_config = {}
+    for _, runner_name in ipairs(runner_config) do
+      local runner_module = lookup_runner_module(self, runner_name)
+      merged_config = vim.tbl_extend("force", runner_module, merged_config)
+    end
+    runner_config = merged_config
   end
 
   validate_runner_config(runner_config)
@@ -559,10 +580,7 @@ end
 for _, profile_name in ipairs({ "line_tests", "all_tests", "file_tests" }) do
   M["debug_" .. profile_name] = function(start_config)
     error_wrapper(function()
-      runner:start_profile_name(
-        profile_name,
-        vim.tbl_extend("force", start_config or {}, { debugger = true })
-      )
+      runner:start_profile_name(profile_name, vim.tbl_extend("force", start_config or {}, { debugger = true }))
     end)
   end
 end
@@ -652,6 +670,12 @@ end
 function M.previous_output_history()
   error_wrapper(function()
     runner:previous_output_history()
+  end)
+end
+
+function M.execute_command(command)
+  error_wrapper(function()
+    vim.cmd(command)
   end)
 end
 
