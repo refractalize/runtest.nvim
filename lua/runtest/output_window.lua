@@ -24,6 +24,7 @@ vim.api.nvim_set_hl(0, sign_highlight, {
 ---@field buf number
 ---@field entries Entry[]
 ---@field current_entry_index number | nil
+---@field entry runtest.OutputHistoryEntry
 local OutputWindow = {
 }
 OutputWindow.__index = OutputWindow
@@ -57,13 +58,29 @@ function OutputWindow:is_output_window_focussed()
   return vim.list_contains(windows, current_window)
 end
 
---- @param profile runtest.Profile
+--- @param filename string
+--- @return boolean
+function OutputWindow:is_external_filename(filename)
+  for i, pattern in ipairs(self.entry.profile.runner_config.external_file_patterns or {}) do
+    if type(pattern) == "function" then
+      return pattern(self.entry.profile, filename)
+    else
+      local match_index = vim.fn.match(filename, pattern)
+      if match_index ~= -1 then
+        return true
+      end
+    end
+  end
+
+  return false
+end
+
 --- @param line string
 --- @return [string, string, string, string] | nil
-function OutputWindow:match_filename(profile, line)
-  for i, pattern in ipairs(profile.runner_config.file_patterns or {}) do
+function OutputWindow:match_filename(line)
+  for i, pattern in ipairs(self.entry.profile.runner_config.file_patterns or {}) do
     if type(pattern) == "function" then
-      return pattern(profile, line)
+      return pattern(self.entry.profile, line)
     else
       local matches = vim.fn.matchlist(line, pattern)
       if matches[1] ~= nil then
@@ -127,7 +144,7 @@ function OutputWindow:highlight_entry(entry)
   vim.api.nvim_buf_add_highlight(self.buf, line_ns_id, "QuickFixLine", entry.output_line_number - 1, 0, -1)
 end
 
-function OutputWindow:get_next_entry()
+function OutputWindow:get_next_entry(allow_external_file)
   local current_window = self:current_window()
 
   if current_window then
@@ -135,18 +152,30 @@ function OutputWindow:get_next_entry()
 
     for i, entry in ipairs(self.entries) do
       if entry.output_line_number > current_line_number then
-        return entry, i
+        if allow_external_file or not self:is_external_filename(entry.filename) then
+          return entry, i
+        end
       end
     end
-  elseif self.current_entry_index then
-    return self.entries[self.current_entry_index + 1], self.current_entry_index + 1
-  elseif #self.entries > 0 then
-    return self.entries[1], 1
+  else
+    if not self.current_entry_index then
+      self.current_entry_index = 0
+    end
+
+    local entry_index = self.current_entry_index + 1
+
+    while entry_index <= #self.entries do
+      local entry = self.entries[entry_index]
+      if allow_external_file or not self:is_external_filename(entry.filename) then
+        return entry, entry_index
+      end
+      entry_index = entry_index + 1
+    end
   end
 end
 
-function OutputWindow:goto_next_entry()
-  local entry, index = self:get_next_entry()
+function OutputWindow:goto_next_entry(allow_external_file)
+  local entry, index = self:get_next_entry(allow_external_file)
 
   if entry then
     self.current_entry_index = index
@@ -154,7 +183,7 @@ function OutputWindow:goto_next_entry()
   end
 end
 
-function OutputWindow:get_previous_entry()
+function OutputWindow:get_previous_entry(allow_external_file)
   local current_window = self:current_window()
 
   if current_window then
@@ -163,17 +192,30 @@ function OutputWindow:get_previous_entry()
     for i = #self.entries, 1, -1 do
       local entry = self.entries[i]
       if entry.output_line_number < current_line_number then
-        return entry, i
+        if allow_external_file or not self:is_external_filename(entry.filename) then
+          return entry, i
+        end
       end
     end
-  elseif self.current_entry_index then
-    local index = self.current_entry_index - 1
-    return self.entries[index], index
+  else
+    if not self.current_entry_index then
+      self.current_entry_index = #self.entries + 1
+    end
+
+    local entry_index = self.current_entry_index - 1
+
+    while entry_index >= 1 do
+      local entry = self.entries[entry_index]
+      if allow_external_file or not self:is_external_filename(entry.filename) then
+        return entry, entry_index
+      end
+      entry_index = entry_index - 1
+    end
   end
 end
 
-function OutputWindow:goto_previous_entry()
-  local entry, index = self:get_previous_entry()
+function OutputWindow:goto_previous_entry(allow_external_file)
+  local entry, index = self:get_previous_entry(allow_external_file)
 
   if entry then
     self.current_entry_index = index
@@ -181,15 +223,14 @@ function OutputWindow:goto_previous_entry()
   end
 end
 
---- @param profile runtest.Profile
-function OutputWindow:parse_filenames(profile)
+function OutputWindow:parse_filenames()
   local lines = vim.api.nvim_buf_get_lines(self.buf, 0, -1, false)
 
   self.entries = {}
   self.current_entry_index = nil
 
   for output_line_number, line in ipairs(lines) do
-    local matches = self:match_filename(profile, line)
+    local matches = self:match_filename(line)
     if matches then
       local filename = matches[2]
       local line_number = tonumber(matches[3]) or 1
@@ -253,9 +294,58 @@ local function colorize_output(buf)
   colorizer(buf)
 end
 
+--- @param job_spec runtest.RunSpec
+--- @returns string[]
+local function render_command_line(job_spec)
+  local env = (job_spec[2] or {}).env
+  local env_str = env
+    and vim.fn.join(
+      vim.tbl_map(function(key)
+        return key .. "=" .. vim.fn.shellescape(env[key])
+      end, vim.tbl_keys(env)),
+      " "
+    )
+  local command_str = vim.fn.join(vim.tbl_map(function(arg)
+    return vim.fn.shellescape(arg)
+  end, job_spec[1]))
+
+  return {
+    "Command: " .. (env_str and env_str .. " " .. command_str or command_str),
+  }
+end
+
+local function time_diff_in_microseconds(start_time, end_time)
+  local sec_diff = end_time.sec - start_time.sec
+  local usec_diff = end_time.usec - start_time.usec
+  return sec_diff * 1000000 + usec_diff
+end
+
+local function render_entry_timing(entry)
+  local start_seconds = entry.start_time.sec
+  local end_seconds = entry.end_time.sec
+  local start_time = os.date("%Y-%m-%d %H:%M:%S", start_seconds)
+  local end_time = os.date("%Y-%m-%d %H:%M:%S", end_seconds)
+  local duration_ms = math.floor(time_diff_in_microseconds(entry.start_time, entry.end_time) / 1000)
+  return {
+    "Start time: " .. start_time,
+    "End time: " .. end_time,
+    "Duration: " .. duration_ms .. "ms",
+  }
+end
+
+--- @param entry runtest.OutputHistoryEntry
+function OutputWindow:set_entry(entry)
+  self.entry = entry
+
+  local detail_lines = entry.run_spec and render_command_line(entry.run_spec) or {}
+  local timing = render_entry_timing(entry)
+  self:set_lines(
+    vim.list_extend(vim.list_extend(vim.list_extend(detail_lines, timing), { "" }), entry.output_lines)
+  )
+end
+
 --- @param lines string[]
---- @param profile runtest.Profile
-function OutputWindow:set_lines(lines, profile)
+function OutputWindow:set_lines(lines)
   vim.api.nvim_buf_clear_namespace(self.buf, sign_ns_id, 0, -1)
 
   vim.api.nvim_set_option_value("modifiable", true, { buf = self.buf })
@@ -270,7 +360,7 @@ function OutputWindow:set_lines(lines, profile)
     vim.api.nvim_win_set_cursor(current_window, { 1, 0 })
   end
 
-  self:parse_filenames(profile)
+  self:parse_filenames()
   self:set_entry_signs()
 end
 

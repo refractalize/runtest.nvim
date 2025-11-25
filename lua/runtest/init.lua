@@ -20,6 +20,7 @@ local OutputHistory = require("runtest.output_history")
 --- @field args string[]?
 --- @field name string
 --- @field file_patterns (string | fun(profile: runtest.Profile, line: string): ([string, string, string, string] | nil))[]
+--- @field external_file_patterns (string | fun(profile: runtest.Profile, line: string): (boolean))[]
 --- @field line_tests fun(): runtest.Profile
 --- @field all_tests fun(): runtest.Profile
 --- @field file_tests fun(): runtest.Profile
@@ -91,6 +92,7 @@ function Runner.new()
       pytest = require("runtest.runners.pytest"),
       jest = require("runtest.runners.jest"),
       vitest = require("runtest.runners.vitest"),
+      biome = require("runtest.runners.biome"),
     },
   }
   self.output_history = OutputHistory:new()
@@ -177,63 +179,28 @@ function Runner:tests_finished(entry)
   end
 end
 
---- @param job_spec runtest.RunSpec
---- @returns string[]
-local function render_command_line(job_spec)
-  local env = (job_spec[2] or {}).env
-  local env_str = env
-    and vim.fn.join(
-      vim.tbl_map(function(key)
-        return key .. "=" .. vim.fn.shellescape(env[key])
-      end, vim.tbl_keys(env)),
-      " "
-    )
-  local command_str = vim.fn.join(vim.tbl_map(function(arg)
-    return vim.fn.shellescape(arg)
-  end, job_spec[1]))
-
-  return {
-    "Command: " .. (env_str and env_str .. " " .. command_str or command_str),
-  }
-end
-
-local function time_diff_in_microseconds(start_time, end_time)
-  local sec_diff = end_time.sec - start_time.sec
-  local usec_diff = end_time.usec - start_time.usec
-  return sec_diff * 1000000 + usec_diff
-end
-
-local function render_entry_timing(entry)
-  local start_seconds = entry.start_time.sec
-  local end_seconds = entry.end_time.sec
-  local start_time = os.date("%Y-%m-%d %H:%M:%S", start_seconds)
-  local end_time = os.date("%Y-%m-%d %H:%M:%S", end_seconds)
-  local duration_ms = math.floor(time_diff_in_microseconds(entry.start_time, entry.end_time) / 1000)
-  return {
-    "Start time: " .. start_time,
-    "End time: " .. end_time,
-    "Duration: " .. duration_ms .. "ms",
-  }
-end
-
+--- @param entry runtest.OutputHistoryEntry
 function Runner:show_output_history_entry(entry)
   local output_window = self:get_output_window()
-  local detail_lines = entry.run_spec and render_command_line(entry.run_spec) or {}
-  local timing = render_entry_timing(entry)
-  output_window:set_lines(
-    vim.list_extend(vim.list_extend(vim.list_extend(detail_lines, timing), { "" }), entry.output_lines),
-    entry.profile
-  )
+  output_window:set_entry(entry)
 end
 
 function Runner:next_output_history()
   local entry = self.output_history:next_entry()
+
+  if entry == nil then
+    return
+  end
 
   self:show_output_history_entry(entry)
 end
 
 function Runner:previous_output_history()
   local entry = self.output_history:previous_entry()
+
+  if entry == nil then
+    return
+  end
 
   self:show_output_history_entry(entry)
 end
@@ -532,6 +499,7 @@ function Runner:goto_last()
 end
 
 local runner = Runner.new()
+M.runner = runner
 
 --- @generic T
 --- @param fn fun(): T?
@@ -608,15 +576,17 @@ function M.last_profile()
   return runner.last_profile
 end
 
-function M.goto_next_entry()
+function M.goto_next_entry(allow_external_file)
+  allow_external_file = allow_external_file == nil and true or allow_external_file
   error_wrapper(function()
-    runner:get_output_window():goto_next_entry()
+    runner:get_output_window():goto_next_entry(allow_external_file)
   end)
 end
 
-function M.goto_previous_entry()
+function M.goto_previous_entry(allow_external_file)
+  allow_external_file = allow_external_file == nil and true or allow_external_file
   error_wrapper(function()
-    runner:get_output_window():goto_previous_entry()
+    runner:get_output_window():goto_previous_entry(allow_external_file)
   end)
 end
 
