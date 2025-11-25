@@ -26,6 +26,7 @@ end
 
 local function debug_pytest(runner_config, args, start_config)
   return {
+    name = "Debug Pytest",
     type = "python",
     request = "launch",
     module = "pytest",
