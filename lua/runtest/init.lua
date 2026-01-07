@@ -19,6 +19,7 @@ local OutputHistory = require("runtest.output_history")
 --- @class runtest.RunnerConfig
 --- @field args string[]?
 --- @field name string
+--- @field env { [string]: string }?
 --- @field file_patterns (string | fun(profile: runtest.Profile, line: string): ([string, string, string, string] | nil))[]
 --- @field external_file_patterns (string | fun(profile: runtest.Profile, line: string): (boolean))[]
 --- @field line_tests fun(): runtest.Profile
@@ -81,6 +82,7 @@ function Runner.new()
       cs = "dotnet",
       ruby = "rails",
       python = "pytest",
+      rust = "cargo",
       typescriptreact = "jest",
       typescript = "jest",
       javascriptreact = "jest",
@@ -90,9 +92,9 @@ function Runner.new()
       dotnet = require("runtest.runners.dotnet"),
       rails = require("runtest.runners.rails"),
       pytest = require("runtest.runners.pytest"),
+      cargo = require("runtest.runners.cargo"),
       jest = require("runtest.runners.jest"),
       vitest = require("runtest.runners.vitest"),
-      biome = require("runtest.runners.biome"),
     },
   }
   self.output_history = OutputHistory:new()
