@@ -9,7 +9,8 @@ OutputHistory.__index = OutputHistory
 --- @field max_entries number
 
 --- @class runtest.OutputHistoryEntry
---- @field output_lines string[]
+--- @field output_file string | nil
+--- @field output_lines string[] | nil
 --- @field exit_code number
 --- @field profile runtest.Profile
 --- @field start_time [number, number]

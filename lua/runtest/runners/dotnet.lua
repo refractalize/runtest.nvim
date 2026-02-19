@@ -6,9 +6,11 @@ local M = {
   name = "dotnet",
 }
 
-M.file_patterns = {
-  "\\v(\\f+):line (\\d+)",
-  "\\v^(\\f+)\\((\\d+),(\\d+)\\):",
+M.output_profile = {
+  file_patterns = {
+    "\\v(\\f+):line (\\d+)",
+    "\\v^(\\f+)\\((\\d+),(\\d+)\\):",
+  },
 }
 
 M.dap_adapter = "coreclr"

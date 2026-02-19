@@ -5,8 +5,10 @@ local M = {}
 
 M.name = "rails"
 
-M.file_patterns = {
-  "\\v^\\s*(\\f+):(\\d+):",
+M.output_profile = {
+  file_patterns = {
+    "\\v^\\s*(\\f+):(\\d+):",
+  },
 }
 
 --- @param command string
@@ -16,11 +18,11 @@ M.file_patterns = {
 --- @returns RunSpec
 local function rails_command(command, runner_config, args, start_config)
   return {
-    utils.build_command_line({ "rails", command, '--color' }, args, runner_config.args, start_config.args),
+    utils.build_command_line({ "rails", command, "--color" }, args, runner_config.args, start_config.args),
     {},
     {
       tty = false,
-    }
+    },
   }
 end
 
@@ -68,7 +70,7 @@ end
 function M.line_tests(runner_config)
   local filename = vim.fn.expand("%:p")
   local line_number = vim.fn.line(".")
-  return rails_test_profile(runner_config, { filename .. ':' .. line_number })
+  return rails_test_profile(runner_config, { filename .. ":" .. line_number })
 end
 
 --- @param runner_config runtest.RunnerConfig

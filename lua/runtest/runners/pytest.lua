@@ -4,12 +4,14 @@ local utils = require("runtest.utils")
 --- @class M: runtest.RunnerConfig
 local M = {}
 
-M.file_patterns = {
-  '\\vFile "(\\f+)",\\s*line\\s*(\\d+),',
-  "\\v^(\\f+):(\\d+)",
+M.output_profile = {
+  file_patterns = {
+    '\\vFile "(\\f+)",\\s*line\\s*(\\d+),',
+    "\\v^(\\f+):(\\d+)",
+  },
 }
 
-M.name = 'pytest'
+M.name = "pytest"
 
 --- @param runner_config runtest.RunnerConfig
 --- @param args string[]
@@ -34,6 +36,9 @@ local function debug_pytest(runner_config, args, start_config)
   }
 end
 
+--- @param runner_config runtest.RunnerConfig
+--- @param args string[]
+--- @returns runtest.Profile
 local function pytest_profile(runner_config, args)
   return {
     runner_config = runner_config,
@@ -47,7 +52,7 @@ local function pytest_profile(runner_config, args)
 end
 
 --- @param runner_config runtest.RunnerConfig
---- @returns Profile
+--- @returns runtest.Profile
 function M.line_tests(runner_config)
   local filename = vim.fn.expand("%:p")
   local test_pattern = vim.list_extend({ filename }, python_ts.test_path())

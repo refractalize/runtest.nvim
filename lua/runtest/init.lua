@@ -4,6 +4,7 @@ local OutputWindow = require("runtest.output_window")
 local OutputLines = require("runtest.output_lines")
 local window_layout = require("runtest.window_layout")
 local OutputHistory = require("runtest.output_history")
+local OutputBuffer = require("runtest.output_buffer")
 
 --- @class runtest.StartConfig
 --- @field debugger? boolean
@@ -15,13 +16,13 @@ local OutputHistory = require("runtest.output_history")
 --- @field debug_spec (fun(start_config: runtest.StartConfig, runner: runtest.Runner): dap.Configuration)
 --- @field run_spec (fun(start_config: runtest.StartConfig, runner: runtest.Runner): runtest.RunSpec)
 --- @field runner_config runtest.RunnerConfig
+--- @field output_profile runtest.OutputProfile?
 
 --- @class runtest.RunnerConfig
 --- @field args string[]?
 --- @field name string
 --- @field env { [string]: string }?
---- @field file_patterns (string | fun(profile: runtest.Profile, line: string): ([string, string, string, string] | nil))[]
---- @field external_file_patterns (string | fun(profile: runtest.Profile, line: string): (boolean))[]
+--- @field output_profile runtest.OutputProfile
 --- @field line_tests fun(): runtest.Profile
 --- @field all_tests fun(): runtest.Profile
 --- @field file_tests fun(): runtest.Profile
@@ -104,6 +105,12 @@ end
 function Runner:setup(config)
   self.config = vim.tbl_deep_extend("force", self.config, config)
   self.output_history:setup(config.history)
+
+  vim.api.nvim_create_user_command("RunTestAttach", function(args)
+    local profile_name = args.args
+    self:attach_buffer(vim.api.nvim_get_current_buf(), profile_name)
+  end, { nargs = 1 })
+
   M.config = self.config
 end
 
@@ -207,6 +214,23 @@ function Runner:previous_output_history()
   self:show_output_history_entry(entry)
 end
 
+--- @param self runtest.Runner
+--- @param runner_name string
+--- @return runtest.RunnerConfig
+local function lookup_runner_module(self, runner_name)
+  local runner_module = self.config.runners[runner_name]
+  if not runner_module then
+    error({ message = "No runner module for " .. runner_name, level = vim.log.levels.ERROR })
+  end
+  return runner_module
+end
+
+function Runner:attach_buffer(buf, profile_name)
+  local runner_config = lookup_runner_module(self, profile_name)
+  local output_profile = runner_config.output_profile
+  OutputBuffer:attach_buffer(buf, { profile = output_profile })
+end
+
 --- @param new_window_command string|nil The VIM command to run to create the window, default's to `vsplit`
 function Runner:open_output_window(new_window_command)
   self:get_output_window():open(new_window_command or "vsplit")
@@ -240,6 +264,7 @@ end
 function Runner:run_terminal(profile, run_spec)
   run_spec = parse_job_spec(run_spec)
   local start_time = current_time()
+  local output_file = vim.fn.tempname()
 
   local output_lines = OutputLines:new(function(data)
     return data:gsub("\r$", ""):gsub("\x1b%[%?1h\x1b=", "")
@@ -262,6 +287,7 @@ function Runner:run_terminal(profile, run_spec)
     self.terminal_win = nil
 
     self:tests_finished({
+      output_file = output_file,
       output_lines = output_lines:get_lines(),
       exit_code = exit_code,
       profile = profile,
@@ -274,7 +300,7 @@ function Runner:run_terminal(profile, run_spec)
   local options = vim.tbl_extend("keep", run_spec[3] or {}, {
     tty = true,
   })
-  local command = options.tty and vim.list_extend({ exec_no_tty }, run_spec[1]) or run_spec[1]
+  local command = options.tty and vim.list_extend({ exec_no_tty, output_file }, run_spec[1]) or run_spec[1]
 
   vim.fn.jobstart(
     command,
@@ -311,6 +337,7 @@ end
 function Runner:run_job(profile, job_spec)
   job_spec = parse_job_spec(job_spec)
   local start_time = current_time()
+  local output_file = vim.fn.tempname()
 
   local output_lines = OutputLines:new(function(data)
     return data:gsub("\r$", "")
@@ -322,6 +349,7 @@ function Runner:run_job(profile, job_spec)
 
   local on_exit = function(_, exit_code)
     self:tests_finished({
+      output_file = output_file,
       output_lines = output_lines:get_lines(),
       exit_code = exit_code,
       profile = profile,
@@ -331,7 +359,7 @@ function Runner:run_job(profile, job_spec)
     })
   end
 
-  local no_tty_command = vim.list_extend({ exec_no_tty }, job_spec[1])
+  local no_tty_command = vim.list_extend({ exec_no_tty, output_file }, job_spec[1])
 
   local job_spec_options = job_spec[2] or {}
 
@@ -372,17 +400,6 @@ local function validate_runner_config(runner_config)
   if type(runner_config.name) ~= "string" then
     error({ message = "RunnerConfig.name must be a string", level = vim.log.levels.ERROR })
   end
-end
-
---- @param self runtest.Runner
---- @param runner_name string
---- @return runtest.RunnerConfig
-local function lookup_runner_module(self, runner_name)
-  local runner_module = self.config.runners[runner_name]
-  if not runner_module then
-    error({ message = "No runner module for " .. runner_name, level = vim.log.levels.ERROR })
-  end
-  return runner_module
 end
 
 --- @return runtest.RunnerConfig
@@ -581,20 +598,20 @@ end
 function M.goto_next_entry(allow_external_file)
   allow_external_file = allow_external_file == nil and true or allow_external_file
   error_wrapper(function()
-    runner:get_output_window():goto_next_entry(allow_external_file)
+    runner:get_output_window().output_buffer:goto_next_entry(allow_external_file)
   end)
 end
 
 function M.goto_previous_entry(allow_external_file)
   allow_external_file = allow_external_file == nil and true or allow_external_file
   error_wrapper(function()
-    runner:get_output_window():goto_previous_entry(allow_external_file)
+    runner:get_output_window().output_buffer:goto_previous_entry(allow_external_file)
   end)
 end
 
 function M.send_entries_to_quickfix()
   error_wrapper(function()
-    local entries = runner:get_output_window().entries
+    local entries = runner:get_output_window().output_buffer.entries
     local quickfix_entries = vim
       .iter(entries)
       :map(function(entry)
@@ -613,7 +630,7 @@ end
 function M.send_entries_to_fzf()
   error_wrapper(function()
     local fzf_lua = require("fzf-lua")
-    local entries = runner:get_output_window().entries
+    local entries = runner:get_output_window().output_buffer.entries
     local fzf_entries = vim
       .iter(entries)
       :map(function(entry)
@@ -648,6 +665,12 @@ end
 function M.execute_command(command)
   error_wrapper(function()
     vim.cmd(command)
+  end)
+end
+
+function M.attach_buffer(buf, profile_name)
+  error_wrapper(function()
+    runner:attach_buffer(buf, profile_name)
   end)
 end
 

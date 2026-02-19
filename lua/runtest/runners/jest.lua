@@ -6,19 +6,7 @@ local javascript_ts = require("runtest.languages.javascript")
 --- @class M: runtest.RunnerConfig
 local M = {
   name = "jest",
-  file_patterns = {
-    --- @param profile JestProfile
-    --- @param line string
-    function(profile, line)
-      local cwd = profile.cwd or vim.fn.getcwd()
-
-      local matches = vim.fn.matchlist(line, "\\v(\\f+):(\\d+):(\\d+)")
-      if matches[1] ~= nil then
-        matches[2] = cwd .. "/" .. matches[2]
-        return matches
-      end
-    end,
-  },
+  output_profile = {},
 }
 
 --- @param args string[]
@@ -58,7 +46,18 @@ function jest_profile(args)
   local cwd = javascript_ts.get_node_root_directory()
   return {
     runner_config = M,
-    cwd = cwd,
+    output_profile = {
+      file_patterns = {
+        --- @param line string
+        function(line)
+          local matches = vim.fn.matchlist(line, "\\v(\\f+):(\\d+):(\\d+)")
+          if matches[1] ~= nil then
+            matches[2] = cwd .. "/" .. matches[2]
+            return matches
+          end
+        end,
+      },
+    },
     --- @param start_config runtest.StartConfig
     debug_spec = function(start_config)
       return debug_jest(args, start_config)
