@@ -1,5 +1,6 @@
 local sign_ns_id = vim.api.nvim_create_namespace("runtest.sign")
 local line_ns_id = vim.api.nvim_create_namespace("runtest.line")
+local output_buffer_marker = "runtest_output_buffer"
 local highlight = "NeotestFileOutputFilename"
 vim.api.nvim_set_hl(0, highlight, {
   undercurl = true,
@@ -15,8 +16,8 @@ vim.api.nvim_set_hl(0, sign_highlight, {
 --- @field external_file_patterns (string | fun(line: string): (boolean))[]
 
 --- @class OutputBufferOptions
---- @field allow_read boolean
 --- @field profile runtest.OutputProfile | nil
+--- @field header_lines string[] | nil
 
 --- @class Entry
 --- @field filename string
@@ -32,8 +33,15 @@ vim.api.nvim_set_hl(0, sign_highlight, {
 --- @field entries Entry[]
 --- @field current_entry_index number | nil
 --- @field profile runtest.OutputProfile
+--- @field header_lines string[]
 local OutputBuffer = {}
 OutputBuffer.__index = OutputBuffer
+
+--- @param buf number
+--- @return boolean
+function OutputBuffer.is_output_buffer(buf)
+  return vim.api.nvim_buf_is_valid(buf) and vim.b[buf][output_buffer_marker] == true
+end
 
 --- @param filename string
 --- @return boolean
@@ -272,25 +280,15 @@ local function colorize_output(buf)
   colorizer(buf)
 end
 
--- TODO: remove
---- @param lines string[]
-function OutputBuffer:set_lines(lines)
-  vim.api.nvim_buf_clear_namespace(self.buf, sign_ns_id, 0, -1)
-
-  vim.api.nvim_set_option_value("modifiable", true, { buf = self.buf })
-
-  vim.api.nvim_buf_set_lines(self.buf, 0, -1, false, lines)
-  colorize_output(self.buf)
-
-  vim.api.nvim_set_option_value("modifiable", false, { buf = self.buf })
-
-  local current_window = self:current_window()
-  if current_window and current_window == vim.api.nvim_get_current_win() then
-    vim.api.nvim_win_set_cursor(current_window, { 1, 0 })
+--- @return string[]
+function OutputBuffer:get_header_lines_with_separator()
+  if #self.header_lines == 0 then
+    return {}
   end
 
-  self:parse_filenames()
-  self:set_entry_signs()
+  local header = vim.deepcopy(self.header_lines)
+  header[#header + 1] = ""
+  return header
 end
 
 -- TODO: keep this but make it work when loading buffers
@@ -298,11 +296,15 @@ end
 function OutputBuffer:load()
   vim.api.nvim_buf_clear_namespace(self.buf, sign_ns_id, 0, -1)
 
-  vim.api.nvim_set_option_value("modifiable", true, { buf = self.buf })
-
+  vim.bo[self.buf].modifiable = true
+  local header = self:get_header_lines_with_separator()
+  if #header > 0 then
+    local lines = vim.api.nvim_buf_get_lines(self.buf, 0, -1, false)
+    vim.api.nvim_buf_set_lines(self.buf, 0, -1, false, vim.list_extend(header, lines))
+  end
   colorize_output(self.buf)
-
-  vim.api.nvim_set_option_value("modifiable", false, { buf = self.buf })
+  vim.bo[self.buf].modifiable = false
+  vim.bo[self.buf].modified = false
 
   self:parse_filenames()
   self:set_entry_signs()
@@ -310,8 +312,8 @@ end
 
 --- @type OutputBufferOptions
 local default_options = {
-  allow_read = true,
   profile = nil,
+  header_lines = {},
 }
 
 function OutputBuffer:attach_buffer(buf, options)
@@ -328,20 +330,12 @@ function OutputBuffer:new(buf, options)
   local self = setmetatable({}, OutputBuffer)
 
   self.buf = buf
-  self.profile = options.profile
-
-  vim.api.nvim_set_option_value("buflisted", true, { buf = self.buf })
-  vim.api.nvim_set_option_value("buftype", "nofile", { buf = self.buf })
-  vim.api.nvim_set_option_value("modifiable", false, { buf = self.buf })
-
-  if not options.allow_read then
-    vim.api.nvim_create_autocmd("BufReadPre", {
-      buffer = self.buf,
-      callback = function()
-        -- Do nothing
-      end,
-    })
-  end
+  self.profile = options.profile or {
+    file_patterns = {},
+    external_file_patterns = {},
+  }
+  self.header_lines = options.header_lines
+  vim.b[self.buf][output_buffer_marker] = true
 
   self.entries = {}
 
@@ -357,11 +351,20 @@ function OutputBuffer:new(buf, options)
     end
   end, { buffer = self.buf })
 
+  vim.api.nvim_create_autocmd("BufReadPost", {
+    buffer = self.buf,
+    callback = function()
+      self:load()
+    end,
+  })
+
   vim.api.nvim_create_autocmd("BufWinEnter", {
     callback = function(event)
       self:load_buffer_ext_marks(event.buf)
     end,
   })
+
+  self:load()
 
   return self
 end

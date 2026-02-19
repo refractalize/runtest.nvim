@@ -11,6 +11,7 @@ OutputHistory.__index = OutputHistory
 --- @class runtest.OutputHistoryEntry
 --- @field output_file string | nil
 --- @field output_lines string[] | nil
+--- @field output_buffer runtest.OutputBuffer | nil
 --- @field exit_code number
 --- @field profile runtest.Profile
 --- @field start_time [number, number]

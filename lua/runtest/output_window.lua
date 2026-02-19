@@ -1,7 +1,6 @@
 local OutputBuffer = require("runtest.output_buffer")
 
 --- @class OutputWindow
---- @field buf number
 --- @field output_buffer runtest.OutputBuffer
 local OutputWindow = {}
 OutputWindow.__index = OutputWindow
@@ -46,36 +45,85 @@ local function render_entry_timing(entry)
 end
 
 --- @param run_entry runtest.OutputHistoryEntry
-function OutputWindow:set_entry(run_entry)
+--- @return string[]
+local function render_output_header_lines(run_entry)
   local detail_lines = run_entry.run_spec and render_command_line(run_entry.run_spec) or {}
   local timing = render_entry_timing(run_entry)
-  local lines = vim.list_extend(vim.list_extend(vim.list_extend(detail_lines, timing), { "" }), run_entry.output_lines)
-  vim.api.nvim_set_option_value("modifiable", true, { buf = self.buf })
-  vim.api.nvim_buf_set_lines(self.buf, 0, -1, false, lines)
-  vim.api.nvim_set_option_value("modifiable", false, { buf = self.buf })
+  return vim.list_extend(detail_lines, timing)
+end
 
+--- @param run_entry runtest.OutputHistoryEntry
+--- @return number
+local function create_buffer_for_output(run_entry)
+  if run_entry.output_file then
+    local output_file_uri = vim.uri_from_fname(vim.fn.fnamemodify(run_entry.output_file, ":p"))
+    local buf = vim.uri_to_bufnr(output_file_uri)
+    vim.fn.bufload(buf)
+    vim.bo[buf].buflisted = false
+    vim.bo[buf].buftype = "acwrite"
+    vim.bo[buf].modifiable = false
+    return buf
+  elseif run_entry.output_lines then
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, run_entry.output_lines)
+    vim.bo[buf].bufhidden = "unload"
+    vim.bo[buf].buftype = "acwrite"
+    vim.bo[buf].modifiable = false
+
+    return buf
+  else
+    error("Invalid run entry: missing output")
+  end
+end
+
+--- @param run_entry runtest.OutputHistoryEntry
+function OutputWindow:set_entry(run_entry)
   local output_profile = run_entry.profile.output_profile or run_entry.profile.runner_config.output_profile
+  local header_lines = render_output_header_lines(run_entry)
+  local output_buffer = run_entry.output_buffer
 
-  self.output_buffer.profile = output_profile
-  self.output_buffer:load()
+  if not (output_buffer and vim.api.nvim_buf_is_valid(output_buffer.buf)) then
+    local buf = create_buffer_for_output(run_entry)
+    output_buffer = OutputBuffer:new(buf, { profile = output_profile, header_lines = header_lines })
+    run_entry.output_buffer = output_buffer
+  end
+
+  self.output_buffer = output_buffer
 end
 
 function OutputWindow:new()
   local self = setmetatable({}, OutputWindow)
-  self.buf = vim.uri_to_bufnr("runtest://output")
-  self.output_buffer = OutputBuffer:new(self.buf, { allow_read = false })
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].modifiable = false
+  self.output_buffer = OutputBuffer:new(buf, {})
   return self
+end
+
+--- @return number | nil
+local function find_output_window_in_current_tab()
+  local current_tab = vim.api.nvim_get_current_tabpage()
+  local windows = vim.api.nvim_tabpage_list_wins(current_tab)
+
+  for _, win in ipairs(windows) do
+    local buf = vim.api.nvim_win_get_buf(win)
+    if OutputBuffer.is_output_buffer(buf) then
+      return win
+    end
+  end
 end
 
 --- @param new_window_command string
 function OutputWindow:open(new_window_command)
-  local current_window = self.output_buffer:current_window()
+  local current_window = find_output_window_in_current_tab()
 
   if current_window then
     vim.api.nvim_set_current_win(current_window)
+    if vim.api.nvim_get_current_buf() ~= self.output_buffer.buf then
+      vim.api.nvim_set_current_buf(self.output_buffer.buf)
+    end
   else
     vim.cmd(new_window_command)
-    vim.api.nvim_set_current_buf(self.buf)
+    vim.api.nvim_set_current_buf(self.output_buffer.buf)
   end
 end
 
