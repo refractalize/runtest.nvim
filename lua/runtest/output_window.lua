@@ -91,11 +91,19 @@ function OutputWindow:set_entry(run_entry)
   self.output_buffer = output_buffer
 end
 
-function OutputWindow:new()
+function OutputWindow:set_buffer(buf, profile)
+  self.output_buffer = OutputBuffer:new(buf, { profile = profile })
+end
+
+function OutputWindow:new_with_output(run_entry)
   local self = setmetatable({}, OutputWindow)
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[buf].modifiable = false
-  self.output_buffer = OutputBuffer:new(buf, {})
+  self:set_entry(run_entry)
+  return self
+end
+
+function OutputWindow:new_with_buffer(buf, profile)
+  local self = setmetatable({}, OutputWindow)
+  self:set_buffer(buf, profile)
   return self
 end
 

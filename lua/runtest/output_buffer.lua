@@ -1,12 +1,10 @@
 local sign_ns_id = vim.api.nvim_create_namespace("runtest.sign")
 local line_ns_id = vim.api.nvim_create_namespace("runtest.line")
 local output_buffer_marker = "runtest_output_buffer"
-local highlight = "NeotestFileOutputFilename"
-vim.api.nvim_set_hl(0, highlight, {
-  undercurl = true,
-})
+local highlight = "RunTestLine"
+vim.api.nvim_set_hl(0, highlight, {})
 
-local sign_highlight = "NeotestFileOutputFilenameSign"
+local sign_highlight = "RunTestSign"
 vim.api.nvim_set_hl(0, sign_highlight, {
   link = "DiagnosticSignWarn",
 })
@@ -34,6 +32,7 @@ vim.api.nvim_set_hl(0, sign_highlight, {
 --- @field current_entry_index number | nil
 --- @field profile runtest.OutputProfile
 --- @field header_lines string[]
+--- @field modifying_buffer boolean
 local OutputBuffer = {}
 OutputBuffer.__index = OutputBuffer
 
@@ -251,6 +250,7 @@ function OutputBuffer:set_entry_signs()
   for i, entry in ipairs(self.entries) do
     vim.api.nvim_buf_set_extmark(self.buf, sign_ns_id, entry.output_line_number - 1, 0, {
       end_col = #entry.output_line,
+      line_hl_group = highlight,
       sign_text = "│",
       sign_hl_group = sign_highlight,
     })
@@ -291,23 +291,43 @@ function OutputBuffer:get_header_lines_with_separator()
   return header
 end
 
--- TODO: keep this but make it work when loading buffers
---- @param lines string[]
-function OutputBuffer:load()
+function OutputBuffer:parse_filenames_and_set_signs()
   vim.api.nvim_buf_clear_namespace(self.buf, sign_ns_id, 0, -1)
-
-  vim.bo[self.buf].modifiable = true
-  local header = self:get_header_lines_with_separator()
-  if #header > 0 then
-    local lines = vim.api.nvim_buf_get_lines(self.buf, 0, -1, false)
-    vim.api.nvim_buf_set_lines(self.buf, 0, -1, false, vim.list_extend(header, lines))
-  end
-  colorize_output(self.buf)
-  vim.bo[self.buf].modifiable = false
-  vim.bo[self.buf].modified = false
-
   self:parse_filenames()
   self:set_entry_signs()
+end
+
+function OutputBuffer:render_header()
+  local header = self:get_header_lines_with_separator()
+  if #header == 0 then
+    return
+  end
+
+  local lines = vim.api.nvim_buf_get_lines(self.buf, 0, -1, false)
+  vim.api.nvim_buf_set_lines(self.buf, 0, -1, false, vim.list_extend(header, lines))
+end
+
+function OutputBuffer:colorize()
+  colorize_output(self.buf)
+end
+
+--- @param callback fun()
+function OutputBuffer:modify_buffer(callback)
+  self.modifying_buffer = true
+  local modifiable = vim.bo[self.buf].modifiable
+  vim.bo[self.buf].modifiable = true
+  callback()
+  vim.bo[self.buf].modifiable = modifiable
+  vim.bo[self.buf].modified = false
+  self.modifying_buffer = false
+end
+
+function OutputBuffer:load()
+  self:parse_filenames_and_set_signs()
+  self:modify_buffer(function()
+    self:render_header()
+    self:colorize()
+  end)
 end
 
 --- @type OutputBufferOptions
@@ -355,6 +375,16 @@ function OutputBuffer:new(buf, options)
     buffer = self.buf,
     callback = function()
       self:load()
+    end,
+  })
+
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP" }, {
+    buffer = self.buf,
+    callback = function()
+      if self.modifying_buffer then
+        return
+      end
+      self:parse_filenames_and_set_signs()
     end,
   })
 

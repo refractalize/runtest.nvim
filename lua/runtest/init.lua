@@ -49,7 +49,7 @@ end
 --- @field runners { [string]: runtest.RunnerConfig }
 
 --- @class runtest.Runner
---- @field output_window OutputWindow
+--- @field output_window OutputWindow | nil
 --- @field last_profile runtest.Profile | nil
 --- @field last_buffer number | nil
 --- @field last_ext_mark number | nil
@@ -109,7 +109,19 @@ function Runner:setup(config)
   vim.api.nvim_create_user_command("RunTestAttach", function(args)
     local profile_name = args.args
     self:attach_buffer(vim.api.nvim_get_current_buf(), profile_name)
-  end, { nargs = 1 })
+  end, {
+    nargs = 1,
+    complete = function(arg_lead)
+      local matches = {}
+      for runner_name, _ in pairs(self.config.runners or {}) do
+        if arg_lead == "" or vim.startswith(runner_name, arg_lead) then
+          table.insert(matches, runner_name)
+        end
+      end
+      table.sort(matches)
+      return matches
+    end,
+  })
 
   M.config = self.config
 end
@@ -183,15 +195,19 @@ function Runner:tests_finished(entry)
   end
 
   if not failed and self.config.close_output_on_success then
-    local output_window = self:get_output_window()
-    output_window:close()
+    if self.output_window then
+      self.output_window:close()
+    end
   end
 end
 
 --- @param entry runtest.OutputHistoryEntry
 function Runner:show_output_history_entry(entry)
-  local output_window = self:get_output_window()
-  output_window:set_entry(entry)
+  if self.output_window == nil then
+    self.output_window = OutputWindow:new_with_output()
+  else
+    self.output_window:set_entry(entry)
+  end
 end
 
 function Runner:next_output_history()
@@ -228,12 +244,21 @@ end
 function Runner:attach_buffer(buf, profile_name)
   local runner_config = lookup_runner_module(self, profile_name)
   local output_profile = runner_config.output_profile
-  OutputBuffer:attach_buffer(buf, { profile = output_profile })
+  if self.output_window == nil then
+    self.output_window = OutputWindow:new_with_buffer(buf, output_profile)
+  else
+    self.output_window:set_buffer(buf, output_profile)
+  end
 end
 
 --- @param new_window_command string|nil The VIM command to run to create the window, default's to `vsplit`
 function Runner:open_output_window(new_window_command)
-  self:get_output_window():open(new_window_command or "vsplit")
+  if self.output_window == nil then
+    vim.notify("No output window available", vim.log.levels.INFO)
+    return
+  end
+
+  self.output_window:open(new_window_command or "vsplit")
 end
 
 --- @param job_spec runtest.RunSpec
@@ -370,15 +395,6 @@ function Runner:run_job(profile, job_spec)
   })
 
   vim.fn.jobstart(no_tty_command, options)
-end
-
---- @return OutputWindow
-function Runner:get_output_window()
-  if self.output_window == nil then
-    self.output_window = OutputWindow:new()
-  end
-
-  return self.output_window
 end
 
 --- @param new_window_command string
@@ -598,20 +614,28 @@ end
 function M.goto_next_entry(allow_external_file)
   allow_external_file = allow_external_file == nil and true or allow_external_file
   error_wrapper(function()
-    runner:get_output_window().output_buffer:goto_next_entry(allow_external_file)
+    if runner.output_window then
+      runner.output_window.output_buffer:goto_next_entry(allow_external_file)
+    end
   end)
 end
 
 function M.goto_previous_entry(allow_external_file)
   allow_external_file = allow_external_file == nil and true or allow_external_file
   error_wrapper(function()
-    runner:get_output_window().output_buffer:goto_previous_entry(allow_external_file)
+    if runner.output_window then
+      runner.output_window.output_buffer:goto_previous_entry(allow_external_file)
+    end
   end)
 end
 
 function M.send_entries_to_quickfix()
   error_wrapper(function()
-    local entries = runner:get_output_window().output_buffer.entries
+    if not runner.output_window then
+      return
+    end
+
+    local entries = runner.output_window.output_buffer.entries
     local quickfix_entries = vim
       .iter(entries)
       :map(function(entry)
@@ -630,7 +654,11 @@ end
 function M.send_entries_to_fzf()
   error_wrapper(function()
     local fzf_lua = require("fzf-lua")
-    local entries = runner:get_output_window().output_buffer.entries
+    if not runner.output_window then
+      return
+    end
+
+    local entries = runner.output_window.output_buffer.entries
     local fzf_entries = vim
       .iter(entries)
       :map(function(entry)
