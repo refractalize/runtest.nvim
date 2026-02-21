@@ -17,7 +17,7 @@ local function test_path()
 
   local test_matches = vim.tbl_filter(function(match)
     if match.function_name then
-      return match.function_name[1].text:match("^test_")
+      return match.function_name[1].text:match("^test")
     elseif match.class_name then
       return match.class_name[1].text:match("^Test")
     end

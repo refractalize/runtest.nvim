@@ -14,9 +14,9 @@
 --- @field args? string[]
 --- @field name? string
 --- @field file_patterns? (string | fun(command_spec: runtest.CommandSpec, line: string): ([string, string, string, string] | nil))[]
---- @field line_tests? fun(): runtest.CommandSpec
---- @field all_tests? fun(): runtest.CommandSpec
---- @field file_tests? fun(): runtest.CommandSpec
+--- @field line? fun(): runtest.CommandSpec
+--- @field all? fun(): runtest.CommandSpec
+--- @field file? fun(): runtest.CommandSpec
 local M = {}
 
 return M

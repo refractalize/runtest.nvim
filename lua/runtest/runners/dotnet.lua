@@ -135,7 +135,7 @@ local function dotnet_build_profile(runner_config, args)
 end
 
 --- @returns runtest.CommandSpec
-function M.line_tests(runner_config)
+function M.line(runner_config)
   local line_tests = csharp_ts.line_tests()
 
   if #line_tests == 0 then
@@ -149,7 +149,7 @@ function M.line_tests(runner_config)
 end
 
 --- @returns runtest.CommandSpec
-function M.file_tests(runner_config)
+function M.file(runner_config)
   local file_tests = csharp_ts.file_tests()
 
   if #file_tests == 0 then
@@ -168,7 +168,7 @@ function M.file_tests(runner_config)
 end
 
 --- @returns runtest.CommandSpec
-function M.all_tests(runner_config)
+function M.all(runner_config)
   return dotnet_test_profile(runner_config, {})
 end
 

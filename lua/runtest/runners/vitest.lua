@@ -71,20 +71,20 @@ end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns runtest.CommandSpec
-function M.all_tests(runner_config)
+function M.all(runner_config)
   return vitest_profile({})
 end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns runtest.CommandSpec
-function M.file_tests(runner_config)
+function M.file(runner_config)
   local filename = vim.fn.expand("%:p")
   return vitest_profile({ filename })
 end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns runtest.CommandSpec
-function M.line_tests(runner_config)
+function M.line(runner_config)
   local test_context = javascript_ts.line_tests()
   local pattern = vim.fn.join(test_context, " ")
   local test_filename = vim.fn.expand("%:p")

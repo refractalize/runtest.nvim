@@ -72,7 +72,7 @@ local function find_surrounding_matches(query, node, buf)
   local matches = find_matches(query, node:tree():root(), buf)
 
   local enclosing_matches = vim.tbl_filter(function(match)
-    return vim.treesitter.is_ancestor(match._node, node)
+    return match._node == node or vim.treesitter.is_ancestor(match._node, node)
   end, matches)
 
   return enclosing_matches

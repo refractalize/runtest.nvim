@@ -23,9 +23,9 @@ local OutputBuffer = require("runtest.output_buffer")
 --- @field name string
 --- @field env { [string]: string }?
 --- @field output_profile runtest.OutputProfile
---- @field line_tests fun(): runtest.CommandSpec
---- @field all_tests fun(): runtest.CommandSpec
---- @field file_tests fun(): runtest.CommandSpec
+--- @field line fun(): runtest.CommandSpec
+--- @field all fun(): runtest.CommandSpec
+--- @field file fun(): runtest.CommandSpec
 
 local exec_no_tty = debug.getinfo(1, "S").source:sub(2):match("(.*/)") .. "exec-no-tty"
 
@@ -203,7 +203,6 @@ function Runner:debug(command_spec, debug_spec)
     end
   end
 
-  print("Starting debug session with spec:", vim.inspect(debug_spec))
   dap.run(debug_spec)
 end
 
@@ -532,7 +531,7 @@ end
 
 --- @param command_spec_name string
 --- @param start_config runtest.StartConfig | nil
-function Runner:start_command_spec_by_name(command_spec_name, start_config)
+function Runner:start(command_spec_name, start_config)
   start_config = parse_start_config(start_config)
 
   local command_spec = self:resolve_command_spec(command_spec_name)
@@ -544,7 +543,7 @@ end
 
 --- @param command_spec_name string
 --- @param start_config runtest.StartConfig | nil
-function Runner:get_command_spec(command_spec_name, start_config)
+function Runner:get_command(command_spec_name, start_config)
   start_config = parse_start_config(start_config)
 
   local command_spec = self:resolve_command_spec(command_spec_name)
@@ -616,25 +615,22 @@ function M.open_terminal(new_window_command)
   runner:open_terminal_window(new_window_command or "split")
 end
 
-for _, command_spec_name in ipairs({ "line_tests", "all_tests", "file_tests", "lint", "build" }) do
-  M["run_" .. command_spec_name] = function(start_config)
-    error_wrapper(function()
-      runner:start_command_spec_by_name(command_spec_name, start_config)
-    end)
-  end
-  M["get_" .. command_spec_name .. "_command"] = function(start_config)
-    return error_wrapper(function()
-      return runner:get_command_spec(command_spec_name, start_config)
-    end)
-  end
+function M.run(command_spec_name, start_config)
+  error_wrapper(function()
+    runner:start(command_spec_name, start_config)
+  end)
 end
 
-for _, command_spec_name in ipairs({ "line_tests", "all_tests", "file_tests" }) do
-  M["debug_" .. command_spec_name] = function(start_config)
-    error_wrapper(function()
-      runner:start_command_spec_by_name(command_spec_name, vim.tbl_extend("force", start_config or {}, { debugger = true }))
-    end)
-  end
+function M.get_command(command_spec_name, start_config)
+  return error_wrapper(function()
+    return runner:get_command(command_spec_name, start_config)
+  end)
+end
+
+function M.debug(command_spec_name, start_config)
+  error_wrapper(function()
+    runner:start(command_spec_name, vim.tbl_extend("force", start_config or {}, { debugger = true }))
+  end)
 end
 
 function M.run_last(start_config)
