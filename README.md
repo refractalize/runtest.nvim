@@ -113,7 +113,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 - `run_last([start_config])` - Re-run the last test
 - `debug_last([start_config])` - Debug the last test
 - `goto_last()` - Jump to the location of the last executed test
-- `last_profile()` - Get information about the last test run
+- `last_command_spec()` - Get information about the last test run
 
 ##### Window Management
 - `open_output([new_window_command])` - Open the test output window

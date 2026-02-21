@@ -29,12 +29,12 @@ local function buffer_csproj()
   error("No .csproj file found")
 end
 
---- @param profile runtest.Profile
+--- @param runner_command_spec runtest.CommandSpec
 --- @param command [string[], { env: table<string, string>, pty: boolean, on_stdout: fun(data: string[]) }]
 --- @param runner_config M
 --- @param runner runtest.Runner
 --- @returns fun(cb: fun(err: any, result: dap.Configuration))
-local function start_debugger(profile, command, runner_config, runner)
+local function start_debugger(runner_command_spec, command, runner_config, runner)
   return {
     type = runner_config.dap_adapter,
     name = "attach - netcoredbg",
@@ -44,7 +44,7 @@ local function start_debugger(profile, command, runner_config, runner)
         local stdout = { "" }
         local launched_debugger = false
 
-        runner:run_job(profile, {
+        runner:run_job(runner_command_spec, {
           command[1],
           vim.tbl_deep_extend("force", command[2] or {}, {
             env = { ["VSTEST_HOST_DEBUG"] = "1" },
@@ -95,46 +95,46 @@ local function dotnet_test(runner_config, args, start_config)
 end
 
 --- @param args string[] | nil
---- @returns Profile
+--- @returns runtest.CommandSpec
 local function dotnet_test_profile(runner_config, args)
   args = args or {}
   table.insert(args, 1, buffer_csproj())
 
-  local P = {}
+  local command = {}
 
-  P.runner_config = M
+  command.runner_config = M
 
   --- @param start_config runtest.StartConfig
   --- @param runner runtest.Runner
-  function P.debug_spec(start_config, runner)
-    return start_debugger(P, dotnet_test(runner_config, args, start_config), runner_config, runner)
+  function command.debug_spec(start_config, runner)
+    return start_debugger(command, dotnet_test(runner_config, args, start_config), runner_config, runner)
   end
 
   --- @param start_config runtest.StartConfig
-  function P.run_spec(start_config)
+  function command.run_spec(start_config)
     return dotnet_test(runner_config, args, start_config)
   end
 
-  return P
+  return command
 end
 
 --- @param args string[] | nil
---- @returns Profile
+--- @returns runtest.CommandSpec
 local function dotnet_build_profile(runner_config, args)
   args = args or {}
 
-  local P = {}
+  local command = {}
 
-  P.runner_config = M
+  command.runner_config = M
 
-  function P.run_spec(start_config)
+  function command.run_spec(start_config)
     return dotnet("build", runner_config, args, start_config)
   end
 
-  return P
+  return command
 end
 
---- @returns runtest.Profile
+--- @returns runtest.CommandSpec
 function M.line_tests(runner_config)
   local line_tests = csharp_ts.line_tests()
 
@@ -148,7 +148,7 @@ function M.line_tests(runner_config)
   })
 end
 
---- @returns runtest.Profile
+--- @returns runtest.CommandSpec
 function M.file_tests(runner_config)
   local file_tests = csharp_ts.file_tests()
 
@@ -167,12 +167,12 @@ function M.file_tests(runner_config)
   })
 end
 
---- @returns Profile
+--- @returns runtest.CommandSpec
 function M.all_tests(runner_config)
   return dotnet_test_profile(runner_config, {})
 end
 
---- @returns Profile
+--- @returns runtest.CommandSpec
 function M.build(runner_config)
   return dotnet_build_profile(runner_config, {})
 end

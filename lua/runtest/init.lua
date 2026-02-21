@@ -12,7 +12,7 @@ local OutputBuffer = require("runtest.output_buffer")
 
 --- @alias runtest.RunSpec [string[], table?, table?]
 
---- @class runtest.Profile
+--- @class runtest.CommandSpec
 --- @field debug_spec (fun(start_config: runtest.StartConfig, runner: runtest.Runner): dap.Configuration) | nil
 --- @field run_spec (fun(start_config: runtest.StartConfig, runner: runtest.Runner): runtest.RunSpec)
 --- @field runner_config runtest.RunnerConfig
@@ -23,9 +23,9 @@ local OutputBuffer = require("runtest.output_buffer")
 --- @field name string
 --- @field env { [string]: string }?
 --- @field output_profile runtest.OutputProfile
---- @field line_tests fun(): runtest.Profile
---- @field all_tests fun(): runtest.Profile
---- @field file_tests fun(): runtest.Profile
+--- @field line_tests fun(): runtest.CommandSpec
+--- @field all_tests fun(): runtest.CommandSpec
+--- @field file_tests fun(): runtest.CommandSpec
 
 local exec_no_tty = debug.getinfo(1, "S").source:sub(2):match("(.*/)") .. "exec-no-tty"
 
@@ -50,7 +50,7 @@ end
 
 --- @class runtest.Runner
 --- @field output_window OutputWindow | nil
---- @field last_profile runtest.Profile | nil
+--- @field last_command_spec runtest.CommandSpec | nil
 --- @field last_buffer number | nil
 --- @field last_ext_mark number | nil
 --- @field terminal_buf number | nil
@@ -118,8 +118,8 @@ function Runner:setup(config)
   end
 
   vim.api.nvim_create_user_command("RunTestAttach", function(args)
-    local profile_name = args.args
-    self:attach_buffer(vim.api.nvim_get_current_buf(), profile_name)
+    local runner_name = args.args
+    self:attach_buffer(vim.api.nvim_get_current_buf(), runner_name)
   end, {
     nargs = 1,
     complete = complete_runner_names,
@@ -128,14 +128,14 @@ function Runner:setup(config)
   vim.api.nvim_create_user_command("RunTestCmd", function(args)
     if #args.fargs < 2 then
       error({
-        message = "Usage: RunTestCmd <runner-profile> <command> [args...]",
+        message = "Usage: RunTestCmd <runner-name> <command> [args...]",
         level = vim.log.levels.WARN,
       })
     end
 
     local runner_name = args.fargs[1]
-    local command = vim.list_slice(args.fargs, 2)
-    self:run_command(runner_name, command)
+    local shell_command = vim.list_slice(args.fargs, 2)
+    self:run_command(runner_name, shell_command)
   end, {
     nargs = "+",
     complete = function(arg_lead, cmd_line, cursor_pos)
@@ -154,15 +154,15 @@ function Runner:setup(config)
   M.config = self.config
 end
 
---- @param profile runtest.Profile
-function Runner:set_last_profile(profile)
+--- @param command_spec runtest.CommandSpec
+function Runner:set_last_command_spec(command_spec)
   if self.last_ext_mark ~= nil then
     if self.last_buffer ~= nil and vim.api.nvim_buf_is_valid(self.last_buffer) then
       vim.api.nvim_buf_del_extmark(self.last_buffer, ns_id, self.last_ext_mark)
     end
   end
 
-  self.last_profile = profile
+  self.last_command_spec = command_spec
   self.last_buffer = vim.api.nvim_get_current_buf()
   local cursor = vim.api.nvim_win_get_cursor(0)
   self.last_ext_mark = vim.api.nvim_buf_set_extmark(self.last_buffer, ns_id, cursor[1] - 1, cursor[2], {})
@@ -173,9 +173,9 @@ local function current_time()
   return { sec = seconds, usec = microseconds }
 end
 
---- @param profile runtest.Profile
+--- @param command_spec runtest.CommandSpec
 --- @param debug_spec dap.Configuration
-function Runner:debug(profile, debug_spec)
+function Runner:debug(command_spec, debug_spec)
   local dap = require("dap")
   local listen = type(debug_spec) == "table" and debug_spec.request ~= "attach"
   local start_time = current_time()
@@ -187,7 +187,7 @@ function Runner:debug(profile, debug_spec)
       self:tests_finished({
         output_lines = output_lines:get_lines(),
         exit_code = body.exit_code,
-        profile = profile,
+        command_spec = command_spec,
         start_time = start_time,
         end_time = current_time(),
         debug_spec = debug_spec,
@@ -270,8 +270,8 @@ local function lookup_runner_module(self, runner_name)
   return runner_module
 end
 
-function Runner:attach_buffer(buf, profile_name)
-  local runner_config = lookup_runner_module(self, profile_name)
+function Runner:attach_buffer(buf, runner_name)
+  local runner_config = lookup_runner_module(self, runner_name)
   local output_profile = runner_config.output_profile
   if self.output_window == nil then
     self.output_window = OutputWindow:new_with_buffer(buf, output_profile)
@@ -281,19 +281,19 @@ function Runner:attach_buffer(buf, profile_name)
 end
 
 --- @param runner_name string
---- @param command string[]
-function Runner:run_command(runner_name, command)
+--- @param shell_command string[]
+function Runner:run_command(runner_name, shell_command)
   local runner_config = lookup_runner_module(self, runner_name)
-  local profile = {
+  local runner_command_spec = {
     runner_config = runner_config,
     output_profile = runner_config.output_profile,
     run_spec = function()
-      return { command }
+      return { shell_command }
     end,
   }
 
-  self:set_last_profile(profile)
-  self:run_terminal(profile, { command })
+  self:set_last_command_spec(runner_command_spec)
+  self:run_terminal(runner_command_spec, { shell_command })
 end
 
 --- @param new_window_command string|nil The VIM command to run to create the window, default's to `vsplit`
@@ -329,9 +329,9 @@ local function follow_latest_output()
   vim.cmd.normal("G")
 end
 
---- @param profile runtest.Profile
+--- @param command_spec runtest.CommandSpec
 --- @param run_spec runtest.RunSpec
-function Runner:run_terminal(profile, run_spec)
+function Runner:run_terminal(command_spec, run_spec)
   run_spec = parse_job_spec(run_spec)
   local start_time = current_time()
   local output_file = vim.fn.tempname()
@@ -360,7 +360,7 @@ function Runner:run_terminal(profile, run_spec)
       output_file = output_file,
       output_lines = output_lines:get_lines(),
       exit_code = exit_code,
-      profile = profile,
+      command_spec = command_spec,
       start_time = start_time,
       end_time = current_time(),
       run_spec = run_spec,
@@ -402,9 +402,9 @@ local function optional_combine(fn1, fn2)
   end
 end
 
---- @param profile runtest.Profile
+--- @param command_spec runtest.CommandSpec
 --- @param job_spec runtest.RunSpec
-function Runner:run_job(profile, job_spec)
+function Runner:run_job(command_spec, job_spec)
   job_spec = parse_job_spec(job_spec)
   local start_time = current_time()
   local output_file = vim.fn.tempname()
@@ -422,7 +422,7 @@ function Runner:run_job(profile, job_spec)
       output_file = output_file,
       output_lines = output_lines:get_lines(),
       exit_code = exit_code,
-      profile = profile,
+      command_spec = command_spec,
       start_time = start_time,
       end_time = current_time(),
       job_spec = job_spec,
@@ -488,19 +488,19 @@ function Runner:runner_config()
   return runner_config
 end
 
---- @param profile runtest.Profile
+--- @param command_spec runtest.CommandSpec
 --- @param start_config runtest.StartConfig
-function Runner:start_profile(profile, start_config)
+function Runner:start_command_spec(command_spec, start_config)
   if start_config.debugger then
-    if profile.debug_spec == nil then
-      error({ message = "Profile does not support debugging", level = vim.log.levels.ERROR })
+    if command_spec.debug_spec == nil then
+      error({ message = "Command does not support debugging", level = vim.log.levels.ERROR })
     else
-      local debug_spec = profile.debug_spec(start_config, self)
-      self:debug(profile, debug_spec)
+      local debug_spec = command_spec.debug_spec(start_config, self)
+      self:debug(command_spec, debug_spec)
     end
   else
-    local run_spec = profile.run_spec(start_config, self)
-    self:run_terminal(profile, run_spec)
+    local run_spec = command_spec.run_spec(start_config, self)
+    self:run_terminal(command_spec, run_spec)
   end
 end
 
@@ -513,43 +513,43 @@ local function parse_start_config(start_config)
   }, start_config or {})
 end
 
---- @param profile_name string
---- @return runtest.Profile
-function Runner:resolve_profile(profile_name)
+--- @param command_spec_name string
+--- @return runtest.CommandSpec
+function Runner:resolve_command_spec(command_spec_name)
   local runner_config = self:runner_config()
 
-  local profile_fn = runner_config[profile_name]
+  local command_fn = runner_config[command_spec_name]
 
-  if not profile_fn then
+  if not command_fn then
     error({
-      message = "No profile " .. profile_name .. " for runner " .. runner_config.name,
+      message = "No command " .. command_spec_name .. " for runner " .. runner_config.name,
       level = vim.log.levels.WARN,
     })
   end
 
-  return profile_fn(runner_config)
+  return command_fn(runner_config)
 end
 
---- @param profile_name string
+--- @param command_spec_name string
 --- @param start_config runtest.StartConfig | nil
-function Runner:start_profile_name(profile_name, start_config)
+function Runner:start_command_spec_by_name(command_spec_name, start_config)
   start_config = parse_start_config(start_config)
 
-  local profile = self:resolve_profile(profile_name)
+  local command_spec = self:resolve_command_spec(command_spec_name)
 
-  self:set_last_profile(profile)
+  self:set_last_command_spec(command_spec)
 
-  self:start_profile(profile, start_config)
+  self:start_command_spec(command_spec, start_config)
 end
 
---- @param profile_name string
+--- @param command_spec_name string
 --- @param start_config runtest.StartConfig | nil
-function Runner:get_profile_command(profile_name, start_config)
+function Runner:get_command_spec(command_spec_name, start_config)
   start_config = parse_start_config(start_config)
 
-  local profile = self:resolve_profile(profile_name)
+  local command_spec = self:resolve_command_spec(command_spec_name)
 
-  return profile.run_spec(start_config, self)
+  return command_spec.run_spec(start_config, self)
 end
 
 --- @param start_config runtest.StartConfig | nil
@@ -565,15 +565,15 @@ end
 
 --- @param start_config runtest.StartConfig | nil
 function Runner:run_last(start_config)
-  if self.last_profile == nil then
-    error({ message = "No last test", level = vim.log.levels.INFO })
+  if self.last_command_spec == nil then
+    error({ message = "No last command", level = vim.log.levels.INFO })
   end
 
-  self:start_profile(self.last_profile, parse_start_config(start_config))
+  self:start_command_spec(self.last_command_spec, parse_start_config(start_config))
 end
 
 function Runner:goto_last()
-  if self.last_profile == nil then
+  if self.last_command_spec == nil then
     error({ message = "No last test", level = vim.log.levels.INFO })
   end
 
@@ -616,23 +616,23 @@ function M.open_terminal(new_window_command)
   runner:open_terminal_window(new_window_command or "split")
 end
 
-for _, profile_name in ipairs({ "line_tests", "all_tests", "file_tests", "lint", "build" }) do
-  M["run_" .. profile_name] = function(start_config)
+for _, command_spec_name in ipairs({ "line_tests", "all_tests", "file_tests", "lint", "build" }) do
+  M["run_" .. command_spec_name] = function(start_config)
     error_wrapper(function()
-      runner:start_profile_name(profile_name, start_config)
+      runner:start_command_spec_by_name(command_spec_name, start_config)
     end)
   end
-  M["get_" .. profile_name .. "_command"] = function(start_config)
+  M["get_" .. command_spec_name .. "_command"] = function(start_config)
     return error_wrapper(function()
-      return runner:get_profile_command(profile_name, start_config)
+      return runner:get_command_spec(command_spec_name, start_config)
     end)
   end
 end
 
-for _, profile_name in ipairs({ "line_tests", "all_tests", "file_tests" }) do
-  M["debug_" .. profile_name] = function(start_config)
+for _, command_spec_name in ipairs({ "line_tests", "all_tests", "file_tests" }) do
+  M["debug_" .. command_spec_name] = function(start_config)
     error_wrapper(function()
-      runner:start_profile_name(profile_name, vim.tbl_extend("force", start_config or {}, { debugger = true }))
+      runner:start_command_spec_by_name(command_spec_name, vim.tbl_extend("force", start_config or {}, { debugger = true }))
     end)
   end
 end
@@ -655,9 +655,9 @@ function M.goto_last()
   end)
 end
 
---- @return runtest.Profile | nil
-function M.last_profile()
-  return runner.last_profile
+--- @return runtest.CommandSpec | nil
+function M.last_command_spec()
+  return runner.last_command_spec
 end
 
 function M.goto_next_entry(allow_external_file)
@@ -745,9 +745,9 @@ function M.execute_command(command)
   end)
 end
 
-function M.attach_buffer(buf, profile_name)
+function M.attach_buffer(buf, runner_name)
   error_wrapper(function()
-    runner:attach_buffer(buf, profile_name)
+    runner:attach_buffer(buf, runner_name)
   end)
 end
 

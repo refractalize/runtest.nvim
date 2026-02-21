@@ -39,7 +39,7 @@ end
 
 --- @param runner_config runtest.RunnerConfig
 --- @param args string[]
---- @returns runtest.Profile
+--- @returns runtest.CommandSpec
 local function pytest_profile(runner_config, args)
   return {
     runner_config = runner_config,
@@ -53,7 +53,7 @@ local function pytest_profile(runner_config, args)
 end
 
 --- @param runner_config runtest.RunnerConfig
---- @returns runtest.Profile
+--- @returns runtest.CommandSpec
 function M.line_tests(runner_config)
   local filename = vim.fn.expand("%:p")
   local test_pattern = vim.list_extend({ filename }, python_ts.test_path())
@@ -63,13 +63,13 @@ function M.line_tests(runner_config)
 end
 
 --- @param runner_config runtest.RunnerConfig
---- @returns Profile
+--- @returns runtest.CommandSpec
 function M.all_tests(runner_config)
   return pytest_profile(runner_config, {})
 end
 
 --- @param runner_config runtest.RunnerConfig
---- @returns Profile
+--- @returns runtest.CommandSpec
 function M.file_tests(runner_config)
   local filename = vim.fn.expand("%:p")
   local args = { filename }

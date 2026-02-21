@@ -78,7 +78,7 @@ end
 
 --- @param run_entry runtest.OutputHistoryEntry
 function OutputWindow:set_entry(run_entry)
-  local output_profile = run_entry.profile.output_profile or run_entry.profile.runner_config.output_profile
+  local output_profile = run_entry.command_spec.output_profile or run_entry.command_spec.runner_config.output_profile
   local header_lines = render_output_header_lines(run_entry)
   local output_buffer = run_entry.output_buffer
 
@@ -91,16 +91,21 @@ function OutputWindow:set_entry(run_entry)
   self.output_buffer = output_buffer
 end
 
+--- @param buf number
+--- @param profile runtest.OutputProfile
 function OutputWindow:set_buffer(buf, profile)
   self.output_buffer = OutputBuffer:new(buf, { profile = profile })
 end
 
+--- @param run_entry runtest.OutputHistoryEntry
 function OutputWindow:new_with_output(run_entry)
   local self = setmetatable({}, OutputWindow)
   self:set_entry(run_entry)
   return self
 end
 
+--- @param buf number
+--- @param profile runtest.OutputProfile
 function OutputWindow:new_with_buffer(buf, profile)
   local self = setmetatable({}, OutputWindow)
   self:set_buffer(buf, profile)

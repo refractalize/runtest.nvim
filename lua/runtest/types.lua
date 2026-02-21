@@ -13,10 +13,10 @@
 --- @class runtest.PartialRunnerConfig
 --- @field args? string[]
 --- @field name? string
---- @field file_patterns? (string | fun(profile: runtest.Profile, line: string): ([string, string, string, string] | nil))[]
---- @field line_tests? fun(): runtest.Profile
---- @field all_tests? fun(): runtest.Profile
---- @field file_tests? fun(): runtest.Profile
+--- @field file_patterns? (string | fun(command_spec: runtest.CommandSpec, line: string): ([string, string, string, string] | nil))[]
+--- @field line_tests? fun(): runtest.CommandSpec
+--- @field all_tests? fun(): runtest.CommandSpec
+--- @field file_tests? fun(): runtest.CommandSpec
 local M = {}
 
 return M

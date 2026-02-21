@@ -13,7 +13,7 @@ OutputHistory.__index = OutputHistory
 --- @field output_lines string[] | nil
 --- @field output_buffer runtest.OutputBuffer | nil
 --- @field exit_code number
---- @field profile runtest.Profile
+--- @field command_spec runtest.CommandSpec
 --- @field start_time [number, number]
 --- @field end_time [number, number]
 --- @field debug_spec dap.Configuration?

@@ -1,6 +1,6 @@
 local javascript_ts = require("runtest.languages.javascript")
 
---- @class JestProfile: runtest.Profile
+--- @class JestProfile: runtest.CommandSpec
 --- @field cwd string
 
 --- @class M: runtest.RunnerConfig
@@ -70,13 +70,13 @@ function jest_profile(args)
 end
 
 --- @param runner_config runtest.RunnerConfig
---- @returns Profile
+--- @returns runtest.CommandSpec
 function M.all_tests(runner_config)
   return jest_profile({})
 end
 
 --- @param runner_config runtest.RunnerConfig
---- @returns Profile
+--- @returns runtest.CommandSpec
 function M.line_tests(runner_config)
   local test_context = javascript_ts.line_tests()
   local pattern = vim.fn.join(test_context, " ")
