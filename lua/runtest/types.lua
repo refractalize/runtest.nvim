@@ -14,7 +14,9 @@
 --- @field args? string[]
 --- @field name? string
 --- @field file_patterns? (string | fun(command_spec: runtest.CommandSpec, line: string): ([string, string, string, string] | nil))[]
---- @field [string] (fun(runner_config: runtest.RunnerConfig): runtest.CommandSpec) | nil
+--- @field select_context? fun(runner_config: runtest.RunnerConfig)
+--- @field set_context? fun(runner_config: runtest.RunnerConfig, context: string)
+--- @field [string] (fun(runner_config: runtest.RunnerConfig): runtest.CommandSpec) | (fun(runner_config: runtest.RunnerConfig)) | (fun(runner_config: runtest.RunnerConfig, context: string)) | nil
 local M = {}
 
 return M

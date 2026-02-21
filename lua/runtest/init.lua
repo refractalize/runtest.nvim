@@ -23,7 +23,9 @@ local OutputBuffer = require("runtest.output_buffer")
 --- @field name string
 --- @field env { [string]: string }?
 --- @field output_profile runtest.OutputProfile
---- @field [string] (fun(runner_config: runtest.RunnerConfig): runtest.CommandSpec) | nil
+--- @field select_context? fun(runner_config: runtest.RunnerConfig)
+--- @field set_context? fun(runner_config: runtest.RunnerConfig, context: string)
+--- @field [string] (fun(runner_config: runtest.RunnerConfig): runtest.CommandSpec) | (fun(runner_config: runtest.RunnerConfig)) | (fun(runner_config: runtest.RunnerConfig, context: string)) | nil
 
 local exec_no_tty = debug.getinfo(1, "S").source:sub(2):match("(.*/)") .. "exec-no-tty"
 
@@ -641,6 +643,33 @@ end
 function M.debug(command_spec_name, start_config)
   error_wrapper(function()
     runner:start(command_spec_name, vim.tbl_extend("force", start_config or {}, { debugger = true }))
+  end)
+end
+
+function M.select_context()
+  error_wrapper(function()
+    local runner_config = runner:runner_config()
+    local select_context = runner_config.select_context
+
+    if type(select_context) ~= "function" then
+      error({ message = "Current runner does not support context selection", level = vim.log.levels.WARN })
+    end
+
+    select_context(runner_config)
+  end)
+end
+
+--- @param context string
+function M.set_context(context)
+  error_wrapper(function()
+    local runner_config = runner:runner_config()
+    local set_context = runner_config.set_context
+
+    if type(set_context) ~= "function" then
+      error({ message = "Current runner does not support context setting", level = vim.log.levels.WARN })
+    end
+
+    set_context(runner_config, context)
   end)
 end
 
