@@ -12,6 +12,9 @@ vim.api.nvim_set_hl(0, sign_highlight, {
 --- @class runtest.OutputProfile
 --- @field file_patterns (string | fun(line: string): ([string, string, string, string] | nil))[]
 --- @field external_file_patterns (string | fun(line: string): (boolean))[]
+--- @field render_header boolean | nil
+--- @field colorize boolean | nil
+--- @field always_open boolean | nil
 
 --- @class OutputBufferOptions
 --- @field profile runtest.OutputProfile | nil
@@ -324,10 +327,20 @@ end
 
 function OutputBuffer:load()
   self:parse_filenames_and_set_signs()
-  self:modify_buffer(function()
-    self:render_header()
-    self:colorize()
-  end)
+
+  local render_header = self.profile.render_header == nil and true or self.profile.render_header
+  local colorize = self.profile.colorize == nil and true or self.profile.colorize
+
+  if self.profile.render_header or self.profile.colorize then
+    self:modify_buffer(function()
+      if render_header then
+        self:render_header()
+      end
+      if colorize then
+        self:colorize()
+      end
+    end)
+  end
 end
 
 --- @type OutputBufferOptions

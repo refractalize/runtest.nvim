@@ -23,9 +23,7 @@ local OutputBuffer = require("runtest.output_buffer")
 --- @field name string
 --- @field env { [string]: string }?
 --- @field output_profile runtest.OutputProfile
---- @field line fun(): runtest.CommandSpec
---- @field all fun(): runtest.CommandSpec
---- @field file fun(): runtest.CommandSpec
+--- @field [string] (fun(runner_config: runtest.RunnerConfig): runtest.CommandSpec) | nil
 
 local exec_no_tty = debug.getinfo(1, "S").source:sub(2):match("(.*/)") .. "exec-no-tty"
 
@@ -84,6 +82,7 @@ function Runner.new()
       ruby = "rails",
       python = "pytest",
       rust = "cargo",
+      sql = "psql",
       typescriptreact = "jest",
       typescript = "jest",
       javascriptreact = "jest",
@@ -94,6 +93,7 @@ function Runner.new()
       rails = require("runtest.runners.rails"),
       pytest = require("runtest.runners.pytest"),
       cargo = require("runtest.runners.cargo"),
+      psql = require("runtest.runners.psql"),
       jest = require("runtest.runners.jest"),
       vitest = require("runtest.runners.vitest"),
     },
@@ -141,7 +141,8 @@ function Runner:setup(config)
     complete = function(arg_lead, cmd_line, cursor_pos)
       local before_cursor = cmd_line:sub(1, cursor_pos)
       local args_input = before_cursor:gsub("^%s*RunTestCmd%s*", "", 1)
-      local is_first_arg = args_input == "" or (#vim.split(args_input, "%s+", { trimempty = true }) == 1 and not args_input:find("%s"))
+      local is_first_arg = args_input == ""
+        or (#vim.split(args_input, "%s+", { trimempty = true }) == 1 and not args_input:find("%s"))
 
       if is_first_arg then
         return complete_runner_names(arg_lead)
@@ -218,13 +219,23 @@ function Runner:tests_finished(entry)
   self.output_history:add_entry(entry)
   self:show_output_history_entry(entry)
 
-  if failed and self.config.open_output_on_failure then
-    self:open_output_window()
+  local output_profile = entry.command_spec.output_profile or entry.command_spec.runner_config.output_profile
+  local always_open = false
+  if output_profile.always_open ~= nil then
+    always_open = output_profile.always_open
   end
 
-  if not failed and self.config.close_output_on_success then
-    if self.output_window then
-      self.output_window:close()
+  if always_open then
+    self:open_output_window()
+  else
+    if failed and self.config.open_output_on_failure then
+      self:open_output_window()
+    end
+
+    if not failed and self.config.close_output_on_success then
+      if self.output_window then
+        self.output_window:close()
+      end
     end
   end
 end
