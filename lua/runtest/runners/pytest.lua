@@ -33,6 +33,7 @@ local function debug_pytest(runner_config, args, start_config)
     request = "launch",
     module = "pytest",
     args = pytest_args(runner_config, args, start_config),
+    name = "Debug pytest",
   }
 end
 

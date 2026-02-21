@@ -13,7 +13,7 @@ local OutputBuffer = require("runtest.output_buffer")
 --- @alias runtest.RunSpec [string[], table?, table?]
 
 --- @class runtest.Profile
---- @field debug_spec (fun(start_config: runtest.StartConfig, runner: runtest.Runner): dap.Configuration)
+--- @field debug_spec (fun(start_config: runtest.StartConfig, runner: runtest.Runner): dap.Configuration) | nil
 --- @field run_spec (fun(start_config: runtest.StartConfig, runner: runtest.Runner): runtest.RunSpec)
 --- @field runner_config runtest.RunnerConfig
 --- @field output_profile runtest.OutputProfile?
@@ -106,20 +106,48 @@ function Runner:setup(config)
   self.config = vim.tbl_deep_extend("force", self.config, config)
   self.output_history:setup(config.history)
 
+  local function complete_runner_names(arg_lead)
+    local matches = {}
+    for runner_name, _ in pairs(self.config.runners or {}) do
+      if arg_lead == "" or vim.startswith(runner_name, arg_lead) then
+        table.insert(matches, runner_name)
+      end
+    end
+    table.sort(matches)
+    return matches
+  end
+
   vim.api.nvim_create_user_command("RunTestAttach", function(args)
     local profile_name = args.args
     self:attach_buffer(vim.api.nvim_get_current_buf(), profile_name)
   end, {
     nargs = 1,
-    complete = function(arg_lead)
-      local matches = {}
-      for runner_name, _ in pairs(self.config.runners or {}) do
-        if arg_lead == "" or vim.startswith(runner_name, arg_lead) then
-          table.insert(matches, runner_name)
-        end
+    complete = complete_runner_names,
+  })
+
+  vim.api.nvim_create_user_command("RunTestCmd", function(args)
+    if #args.fargs < 2 then
+      error({
+        message = "Usage: RunTestCmd <runner-profile> <command> [args...]",
+        level = vim.log.levels.WARN,
+      })
+    end
+
+    local runner_name = args.fargs[1]
+    local command = vim.list_slice(args.fargs, 2)
+    self:run_command(runner_name, command)
+  end, {
+    nargs = "+",
+    complete = function(arg_lead, cmd_line, cursor_pos)
+      local before_cursor = cmd_line:sub(1, cursor_pos)
+      local args_input = before_cursor:gsub("^%s*RunTestCmd%s*", "", 1)
+      local is_first_arg = args_input == "" or (#vim.split(args_input, "%s+", { trimempty = true }) == 1 and not args_input:find("%s"))
+
+      if is_first_arg then
+        return complete_runner_names(arg_lead)
       end
-      table.sort(matches)
-      return matches
+
+      return vim.fn.getcompletion(arg_lead, "shellcmd")
     end,
   })
 
@@ -175,6 +203,7 @@ function Runner:debug(profile, debug_spec)
     end
   end
 
+  print("Starting debug session with spec:", vim.inspect(debug_spec))
   dap.run(debug_spec)
 end
 
@@ -204,7 +233,7 @@ end
 --- @param entry runtest.OutputHistoryEntry
 function Runner:show_output_history_entry(entry)
   if self.output_window == nil then
-    self.output_window = OutputWindow:new_with_output()
+    self.output_window = OutputWindow:new_with_output(entry)
   else
     self.output_window:set_entry(entry)
   end
@@ -249,6 +278,22 @@ function Runner:attach_buffer(buf, profile_name)
   else
     self.output_window:set_buffer(buf, output_profile)
   end
+end
+
+--- @param runner_name string
+--- @param command string[]
+function Runner:run_command(runner_name, command)
+  local runner_config = lookup_runner_module(self, runner_name)
+  local profile = {
+    runner_config = runner_config,
+    output_profile = runner_config.output_profile,
+    run_spec = function()
+      return { command }
+    end,
+  }
+
+  self:set_last_profile(profile)
+  self:run_terminal(profile, { command })
 end
 
 --- @param new_window_command string|nil The VIM command to run to create the window, default's to `vsplit`
@@ -447,8 +492,12 @@ end
 --- @param start_config runtest.StartConfig
 function Runner:start_profile(profile, start_config)
   if start_config.debugger then
-    local debug_spec = profile.debug_spec(start_config, self)
-    self:debug(profile, debug_spec)
+    if profile.debug_spec == nil then
+      error({ message = "Profile does not support debugging", level = vim.log.levels.ERROR })
+    else
+      local debug_spec = profile.debug_spec(start_config, self)
+      self:debug(profile, debug_spec)
+    end
   else
     local run_spec = profile.run_spec(start_config, self)
     self:run_terminal(profile, run_spec)
