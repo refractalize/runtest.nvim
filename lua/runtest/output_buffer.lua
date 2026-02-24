@@ -12,9 +12,10 @@ vim.api.nvim_set_hl(0, sign_highlight, {
 --- @class runtest.OutputProfile
 --- @field file_patterns (string | fun(line: string): ([string, string, string, string] | nil))[]
 --- @field external_file_patterns (string | fun(line: string): (boolean))[]
+--- @field output_window runtest.OutputWindowConfig | nil
+--- @field filetype string | nil
 --- @field render_header boolean | nil
 --- @field colorize boolean | nil
---- @field always_open boolean | nil
 
 --- @class OutputBufferOptions
 --- @field profile runtest.OutputProfile | nil
@@ -328,8 +329,8 @@ end
 function OutputBuffer:load()
   self:parse_filenames_and_set_signs()
 
-  local render_header = self.profile.render_header == nil and true or self.profile.render_header
-  local colorize = self.profile.colorize == nil and true or self.profile.colorize
+  local render_header = self.profile.render_header
+  local colorize = self.profile.colorize
 
   if self.profile.render_header or self.profile.colorize then
     self:modify_buffer(function()
@@ -349,6 +350,13 @@ local default_options = {
   header_lines = {},
 }
 
+local default_profile = {
+  file_patterns = {},
+  external_file_patterns = {},
+  render_header = true,
+  colorize = true,
+}
+
 function OutputBuffer:attach_buffer(buf, options)
   local buffer = self:new(buf, options)
   buffer:load()
@@ -363,10 +371,8 @@ function OutputBuffer:new(buf, options)
   local self = setmetatable({}, OutputBuffer)
 
   self.buf = buf
-  self.profile = options.profile or {
-    file_patterns = {},
-    external_file_patterns = {},
-  }
+  self.profile = vim.tbl_deep_extend("force", default_profile, options.profile or {})
+
   self.header_lines = options.header_lines
   vim.b[self.buf][output_buffer_marker] = true
 

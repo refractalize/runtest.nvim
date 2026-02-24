@@ -1,44 +1,89 @@
 local sql_ts = require("runtest.languages.sql")
 local utils = require("runtest.utils")
+local buffer_context = require("runtest.buffer_context")
 
 --- @class M: runtest.RunnerConfig
 local M = {
   name = "psql",
   output_profile = {
-    file_patterns = { },
+    file_patterns = {},
     colorize = false,
     render_header = false,
-    always_open = true,
+    output_window = {
+      open = "always",
+    },
   },
+  database_env_var = "DATABASE_URL",
+  database_env_var_filter = "DATABASE_URL_*",
 }
 
 local run_test_context_buf_var = "run_test_context"
 
---- @param database_url string
-local function resolve_database_url(database_url)
-  if database_url == "DATABASE_URL" or vim.startswith(database_url, "DATABASE_URL_") then
-    local env_url = vim.env[database_url]
-    if type(env_url) ~= "string" or env_url == "" then
-      error({ message = "Environment variable is empty or missing: " .. database_url, level = vim.log.levels.ERROR })
-    end
-    return env_url
-  end
-
-  return database_url
+--- @param runner_config runtest.RunnerConfig
+--- @return string
+local function get_default_database_env_var(runner_config)
+  return runner_config.database_env_var or "DATABASE_URL"
 end
 
-local function database_url()
-  local bufnr = vim.api.nvim_get_current_buf()
-  local context = vim.b[bufnr][run_test_context_buf_var]
-  if type(context) == "string" and context ~= "" then
-    return resolve_database_url(context)
+--- @param runner_config runtest.RunnerConfig
+--- @param env_var_name string
+--- @return boolean
+local function env_var_matches_filter(runner_config, env_var_name)
+  local database_env_var_filter = runner_config.database_env_var_filter
+  if type(database_env_var_filter) == "string" then
+    local pattern = vim.fn.glob2regpat(database_env_var_filter)
+    return vim.fn.match(env_var_name, pattern) ~= -1
+  elseif type(database_env_var_filter) == "function" then
+    local ok, result = pcall(database_env_var_filter, env_var_name)
+    return ok and result == true
+  else
+    return false
+  end
+end
+
+function resolve_database_url_var(database_env_var)
+  if type(database_env_var) ~= "string" or database_env_var == "" then
+    error({
+      message = "Database URL environment variable must be a non-empty string: " .. database_env_var,
+      level = vim.log.levels.ERROR,
+    })
   end
 
-  local url = vim.env.DATABASE_URL
-  if type(url) ~= "string" or url == "" then
-    error({ message = "DATABASE_URL is not set", level = vim.log.levels.ERROR })
+  local env_url = vim.env[database_env_var]
+  if type(env_url) ~= "string" or env_url == "" then
+    error({
+      message = "Database URL environment variable is empty or missing: " .. database_env_var,
+      level = vim.log.levels.ERROR,
+    })
   end
-  return url
+
+  return env_url
+end
+
+function resolve_database_url(runner_config)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local context = buffer_context.get_buffer_context(bufnr)
+  if type(context) == "string" and context ~= "" then
+    return resolve_database_url_var(context)
+  end
+
+  local default_database_env_var = get_default_database_env_var(runner_config)
+  return resolve_database_url_var(default_database_env_var)
+end
+
+function get_database_url_env_vars(runner_config)
+  local env_vars = {}
+  local database_env_var = get_default_database_env_var(runner_config)
+
+  for key, _ in pairs(vim.fn.environ()) do
+    if key == database_env_var or env_var_matches_filter(runner_config, key) then
+      table.insert(env_vars, key)
+    end
+  end
+
+  table.sort(env_vars)
+
+  return env_vars
 end
 
 --- @param psql_args string[]
@@ -47,7 +92,7 @@ end
 --- @return runtest.RunSpec
 local function run_psql(psql_args, runner_config, start_config)
   local command = utils.build_command_line(
-    { "psql", database_url(), "-X", "-v", "ON_ERROR_STOP=1" },
+    { "psql", resolve_database_url(runner_config), "-X", "-v", "ON_ERROR_STOP=1" },
     psql_args,
     runner_config.args,
     start_config.args
@@ -90,20 +135,7 @@ end
 function M.select_context(runner_config)
   local bufnr = vim.api.nvim_get_current_buf()
   local env = vim.fn.environ()
-  local env_keys = {}
-
-  for key, _ in pairs(env) do
-    if key == "DATABASE_URL" or vim.startswith(key, "DATABASE_URL_") then
-      table.insert(env_keys, key)
-    end
-  end
-
-  table.sort(env_keys)
-
-  if #env_keys == 0 then
-    vim.notify("No DATABASE_URL or DATABASE_URL_* environment variables found", vim.log.levels.WARN)
-    return
-  end
+  local env_keys = get_database_url_env_vars(runner_config)
 
   vim.ui.select(env_keys, {
     prompt = "Select psql context",
@@ -115,20 +147,9 @@ function M.select_context(runner_config)
       return
     end
 
-    vim.b[bufnr][run_test_context_buf_var] = selected_key
+    buffer_context.set_buffer_context(bufnr, selected_key)
     vim.notify("psql context set to " .. selected_key, vim.log.levels.INFO)
   end)
-end
-
---- @param runner_config runtest.RunnerConfig
---- @param context string
-function M.set_context(runner_config, context)
-  if type(context) ~= "string" or context == "" then
-    error({ message = "Context must be a non-empty string", level = vim.log.levels.ERROR })
-  end
-
-  local bufnr = vim.api.nvim_get_current_buf()
-  vim.b[bufnr][run_test_context_buf_var] = context
 end
 
 return M

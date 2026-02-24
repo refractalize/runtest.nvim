@@ -17,12 +17,16 @@ M.name = "pytest"
 --- @param args string[]
 --- @param start_config runtest.StartConfig
 local function pytest_args(runner_config, args, start_config)
-  return utils.build_command_line({ "--color=yes" }, args, runner_config.args, start_config.args)
+  return utils.build_command_line(args, runner_config.args, start_config.args)
 end
 
 local function run_pytest(runner_config, args, start_config)
   return {
-    utils.build_command_line({ "python", "-m", "pytest" }, pytest_args(runner_config, args, start_config)),
+    utils.build_command_line(
+      { "python", "-m", "pytest" },
+      { "--color=yes" },
+      pytest_args(runner_config, args, start_config)
+    ),
   }
 end
 
@@ -33,7 +37,6 @@ local function debug_pytest(runner_config, args, start_config)
     request = "launch",
     module = "pytest",
     args = pytest_args(runner_config, args, start_config),
-    name = "Debug pytest",
   }
 end
 
@@ -73,6 +76,15 @@ end
 function M.file(runner_config)
   local filename = vim.fn.expand("%:p")
   local args = { filename }
+
+  return pytest_profile(runner_config, args)
+end
+
+--- @param runner_config runtest.RunnerConfig
+--- @returns runtest.CommandSpec
+function M.project(runner_config)
+  local project_root = vim.fs.root(0, { "pyproject.toml", "setup.py", ".git" })
+  local args = { project_root }
 
   return pytest_profile(runner_config, args)
 end

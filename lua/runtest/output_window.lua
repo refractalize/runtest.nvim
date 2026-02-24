@@ -1,4 +1,5 @@
 local OutputBuffer = require("runtest.output_buffer")
+local window_layout = require("runtest.window_layout")
 
 --- @class OutputWindow
 --- @field output_buffer runtest.OutputBuffer
@@ -54,7 +55,7 @@ end
 
 --- @param run_entry runtest.OutputHistoryEntry
 --- @return number
-local function create_buffer_for_output(run_entry)
+local function create_buffer_for_output(run_entry, filetype)
   if run_entry.output_file then
     local output_file_uri = vim.uri_from_fname(vim.fn.fnamemodify(run_entry.output_file, ":p"))
     local buf = vim.uri_to_bufnr(output_file_uri)
@@ -62,13 +63,24 @@ local function create_buffer_for_output(run_entry)
     vim.bo[buf].buflisted = false
     vim.bo[buf].buftype = "acwrite"
     vim.bo[buf].modifiable = false
+
+    if filetype then
+      vim.bo[buf].filetype = filetype
+    end
+
     return buf
   elseif run_entry.output_lines then
     local buf = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, run_entry.output_lines)
     vim.bo[buf].bufhidden = "unload"
+
     vim.bo[buf].buftype = "acwrite"
     vim.bo[buf].modifiable = false
+    vim.bo[buf].modified = false
+
+    if filetype then
+      vim.bo[buf].filetype = filetype
+    end
 
     return buf
   else
@@ -83,7 +95,7 @@ function OutputWindow:set_entry(run_entry)
   local output_buffer = run_entry.output_buffer
 
   if not (output_buffer and vim.api.nvim_buf_is_valid(output_buffer.buf)) then
-    local buf = create_buffer_for_output(run_entry)
+    local buf = create_buffer_for_output(run_entry, output_profile.filetype)
     output_buffer = OutputBuffer:new(buf, { profile = output_profile, header_lines = header_lines })
     run_entry.output_buffer = output_buffer
   end
@@ -125,17 +137,22 @@ local function find_output_window_in_current_tab()
   end
 end
 
---- @param new_window_command string
-function OutputWindow:open(new_window_command)
+function OutputWindow:is_open()
+  return find_output_window_in_current_tab() ~= nil
+end
+
+--- @param layout runtest.WindowLayout | nil
+function OutputWindow:open(layout)
   local current_window = find_output_window_in_current_tab()
 
   if current_window then
     vim.api.nvim_set_current_win(current_window)
-    if vim.api.nvim_get_current_buf() ~= self.output_buffer.buf then
-      vim.api.nvim_set_current_buf(self.output_buffer.buf)
+    local current_buf = vim.api.nvim_win_get_buf(current_window)
+    if current_buf ~= self.output_buffer.buf then
+      vim.api.nvim_win_set_buf(current_window, self.output_buffer.buf)
     end
   else
-    vim.cmd(new_window_command)
+    window_layout.new_window(layout)
     vim.api.nvim_set_current_buf(self.output_buffer.buf)
   end
 end

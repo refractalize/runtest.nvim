@@ -5,6 +5,7 @@ local OutputLines = require("runtest.output_lines")
 local window_layout = require("runtest.window_layout")
 local OutputHistory = require("runtest.output_history")
 local OutputBuffer = require("runtest.output_buffer")
+local buffer_context = require("runtest.buffer_context")
 
 --- @class runtest.StartConfig
 --- @field debugger? boolean
@@ -27,6 +28,16 @@ local OutputBuffer = require("runtest.output_buffer")
 --- @field set_context? fun(runner_config: runtest.RunnerConfig, context: string)
 --- @field [string] (fun(runner_config: runtest.RunnerConfig): runtest.CommandSpec) | (fun(runner_config: runtest.RunnerConfig)) | (fun(runner_config: runtest.RunnerConfig, context: string)) | nil
 
+--- @alias runtest.OutputWindowShowCondition 'always' | 'on_failure' | 'on_success' | 'never' | function(entry: runtest.OutputHistoryEntry): boolean
+
+--- @class runtest.OutputWindowConfig
+--- @field open runtest.OutputWindowShowCondition
+--- @field close runtest.OutputWindowShowCondition
+--- @field layout runtest.WindowLayout
+
+--- @class runtest.TerminalWindowConfig
+--- @field layout runtest.WindowLayout
+
 local exec_no_tty = debug.getinfo(1, "S").source:sub(2):match("(.*/)") .. "exec-no-tty"
 
 local M = {}
@@ -41,10 +52,8 @@ local function handle_error(err)
 end
 
 --- @class runtest.Config
---- @field open_output_on_failure boolean
---- @field close_output_on_success boolean
 --- @field history runtest.OutputHistoryConfig
---- @field windows { output: runtest.WindowProfile, terminal: runtest.WindowProfile }
+--- @field windows { output: runtest.OutputWindowConfig, terminal: runtest.TerminalWindowConfig }
 --- @field filetypes { [string]: runtest.RunnerConfig | string }
 --- @field runners { [string]: runtest.RunnerConfig }
 
@@ -63,20 +72,24 @@ function Runner.new()
   local self = setmetatable({}, Runner)
   self.output_window = nil
   self.config = {
-    open_output_on_failure = false,
-    close_output_on_success = false,
     history = {
       max_entries = 10,
     },
     windows = {
       output = {
-        vertical = true,
+        open = "on_failure",
+        close = "on_success",
+        layout = {
+          vertical = true,
+        },
       },
       terminal = {
-        vertical = false,
-        size = 0.25,
-        min = 10,
-        max = 40,
+        layout = {
+          vertical = false,
+          size = 0.25,
+          min = 10,
+          max = 40,
+        },
       },
     },
     filetypes = {
@@ -209,6 +222,16 @@ function Runner:debug(command_spec, debug_spec)
   dap.run(debug_spec)
 end
 
+function should_open_close(open_close_config, entry)
+  if type(open_close_config) == "function" then
+    return open_close_config(entry)
+  else
+    return open_close_config == "always"
+      or (open_close_config == "on_failure" and entry.exit_code ~= 0)
+      or (open_close_config == "on_success" and entry.exit_code == 0)
+  end
+end
+
 --- @param entry runtest.OutputHistoryEntry
 function Runner:tests_finished(entry)
   local failed = entry.exit_code ~= 0
@@ -222,23 +245,12 @@ function Runner:tests_finished(entry)
   self:show_output_history_entry(entry)
 
   local output_profile = entry.command_spec.output_profile or entry.command_spec.runner_config.output_profile
-  local always_open = false
-  if output_profile.always_open ~= nil then
-    always_open = output_profile.always_open
-  end
+  local output_window_config = output_profile.output_window or self.config.windows.output
 
-  if always_open then
-    self:open_output_window()
-  else
-    if failed and self.config.open_output_on_failure then
-      self:open_output_window()
-    end
-
-    if not failed and self.config.close_output_on_success then
-      if self.output_window then
-        self.output_window:close()
-      end
-    end
+  if should_open_close(output_window_config.open, entry) then
+    self:open_output_window(output_window_config.layout)
+  elseif should_open_close(output_window_config.close, entry) then
+    self:close_output_window()
   end
 end
 
@@ -282,6 +294,8 @@ local function lookup_runner_module(self, runner_name)
   return runner_module
 end
 
+--- @param buf number
+--- @param runner_name string
 function Runner:attach_buffer(buf, runner_name)
   local runner_config = lookup_runner_module(self, runner_name)
   local output_profile = runner_config.output_profile
@@ -308,14 +322,33 @@ function Runner:run_command(runner_name, shell_command)
   self:run_terminal(runner_command_spec, { shell_command })
 end
 
---- @param new_window_command string|nil The VIM command to run to create the window, default's to `vsplit`
-function Runner:open_output_window(new_window_command)
+--- @return boolean
+function Runner:is_output_window_open()
+  if self.output_window == nil then
+    return false
+  end
+
+  return self.output_window:is_open()
+end
+
+--- @param layout runtest.WindowLayout | nil
+function Runner:open_output_window(layout)
   if self.output_window == nil then
     vim.notify("No output window available", vim.log.levels.INFO)
     return
   end
 
-  self.output_window:open(new_window_command or "vsplit")
+  layout = layout or self.config.windows.output.layout
+
+  self.output_window:open(layout)
+end
+
+function Runner:close_output_window()
+  if self.output_window == nil then
+    return
+  end
+
+  self.output_window:close()
 end
 
 --- @param job_spec runtest.RunSpec
@@ -353,9 +386,9 @@ function Runner:run_terminal(command_spec, run_spec)
   end)
   local current_window = vim.api.nvim_get_current_win()
 
-  local win, buf = window_layout.new_window(self.config.windows.terminal)
+  local win = window_layout.new_window(self.config.windows.terminal.layout)
   self.terminal_win = win
-  self.terminal_buf = buf
+  self.terminal_buf = vim.api.nvim_get_current_buf()
 
   local function on_data(_, data)
     output_lines:append(data)
@@ -454,8 +487,8 @@ function Runner:run_job(command_spec, job_spec)
   vim.fn.jobstart(no_tty_command, options)
 end
 
---- @param new_window_command string
-function Runner:open_terminal_window(new_window_command)
+--- @param layout runtest.WindowLayout | nil
+function Runner:open_terminal_window(layout)
   if
     self.terminal_win
     and vim.api.nvim_win_is_valid(self.terminal_win)
@@ -463,7 +496,7 @@ function Runner:open_terminal_window(new_window_command)
   then
     vim.api.nvim_set_current_win(self.terminal_win)
   elseif self.terminal_buf then
-    vim.cmd(new_window_command)
+    window_layout.open_window(layout or self.config.windows.terminal.layout)
     vim.api.nvim_set_current_buf(self.terminal_buf)
   end
 end
@@ -618,14 +651,14 @@ function M.setup(config)
   runner:setup(config)
 end
 
---- @param new_window_command string|nil The VIM command to run to create the window, default's to `vsplit`
-function M.open_output(new_window_command)
-  runner:open_output_window(new_window_command)
+--- @param layout runtest.WindowLayout | nil
+function M.open_output(layout)
+  runner:open_output_window(layout)
 end
 
---- @param new_window_command string|nil The VIM command to run to create the window, default's to `split`
-function M.open_terminal(new_window_command)
-  runner:open_terminal_window(new_window_command or "split")
+--- @param layout runtest.WindowLayout | nil
+function M.open_terminal(layout)
+  runner:open_terminal_window(layout)
 end
 
 function M.run(command_spec_name, start_config)
@@ -662,14 +695,7 @@ end
 --- @param context string
 function M.set_context(context)
   error_wrapper(function()
-    local runner_config = runner:runner_config()
-    local set_context = runner_config.set_context
-
-    if type(set_context) ~= "function" then
-      error({ message = "Current runner does not support context setting", level = vim.log.levels.WARN })
-    end
-
-    set_context(runner_config, context)
+    buffer_context.set_buffer_context(0, context)
   end)
 end
 
