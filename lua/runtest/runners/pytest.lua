@@ -12,6 +12,7 @@ M.output_profile = {
 }
 
 M.name = "pytest"
+M.commands = {}
 
 --- @param runner_config runtest.RunnerConfig
 --- @param args string[]
@@ -57,7 +58,7 @@ end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns runtest.CommandSpec
-function M.line(runner_config)
+function M.commands.line(runner_config)
   local filename = vim.fn.expand("%:p")
   local test_pattern = vim.list_extend({ filename }, python_ts.test_path())
   local args = { vim.fn.join(test_pattern, "::") }
@@ -67,13 +68,13 @@ end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns runtest.CommandSpec
-function M.all(runner_config)
+function M.commands.all(runner_config)
   return pytest_profile(runner_config, {})
 end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns runtest.CommandSpec
-function M.file(runner_config)
+function M.commands.file(runner_config)
   local filename = vim.fn.expand("%:p")
   local args = { filename }
 
@@ -82,7 +83,7 @@ end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns runtest.CommandSpec
-function M.project(runner_config)
+function M.commands.project(runner_config)
   local project_root = vim.fs.root(0, { "pyproject.toml", "setup.py", ".git" })
   local args = { project_root }
 

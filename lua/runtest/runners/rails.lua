@@ -4,6 +4,7 @@ local utils = require("runtest.utils")
 local M = {}
 
 M.name = "rails"
+M.commands = {}
 
 M.output_profile = {
   file_patterns = {
@@ -61,13 +62,13 @@ end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns runtest.CommandSpec
-function M.all(runner_config)
+function M.commands.all(runner_config)
   return rails_test_profile(runner_config, {})
 end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns runtest.CommandSpec
-function M.line(runner_config)
+function M.commands.line(runner_config)
   local filename = vim.fn.expand("%:p")
   local line_number = vim.fn.line(".")
   return rails_test_profile(runner_config, { filename .. ":" .. line_number })
@@ -75,7 +76,7 @@ end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns runtest.CommandSpec
-function M.file(runner_config)
+function M.commands.file(runner_config)
   local filename = vim.fn.expand("%:p")
   return rails_test_profile(runner_config, { filename })
 end

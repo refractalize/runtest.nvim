@@ -24,9 +24,9 @@ local buffer_context = require("runtest.buffer_context")
 --- @field name string
 --- @field env { [string]: string }?
 --- @field output_profile runtest.OutputProfile
+--- @field commands { [string]: fun(runner_config: runtest.RunnerConfig): runtest.CommandSpec }?
 --- @field select_context? fun(runner_config: runtest.RunnerConfig)
 --- @field set_context? fun(runner_config: runtest.RunnerConfig, context: string)
---- @field [string] (fun(runner_config: runtest.RunnerConfig): runtest.CommandSpec) | (fun(runner_config: runtest.RunnerConfig)) | (fun(runner_config: runtest.RunnerConfig, context: string)) | nil
 
 --- @alias runtest.OutputWindowShowCondition 'always' | 'on_failure' | 'on_success' | 'never' | function(entry: runtest.OutputHistoryEntry): boolean
 
@@ -506,31 +506,46 @@ local function validate_runner_config(runner_config)
   if type(runner_config.name) ~= "string" then
     error({ message = "RunnerConfig.name must be a string", level = vim.log.levels.ERROR })
   end
+
+  if runner_config.commands ~= nil and type(runner_config.commands) ~= "table" then
+    error({ message = "RunnerConfig.commands must be a table", level = vim.log.levels.ERROR })
+  end
+end
+
+--- @return runtest.RunnerConfig[]
+function Runner:runner_configs()
+  local filetype = vim.bo.filetype
+  local configured_runner = self.config.filetypes[filetype]
+
+  if configured_runner == nil then
+    error({ message = "No test runner configured for " .. filetype, level = vim.log.levels.WARN })
+  end
+
+  if type(configured_runner) == "string" then
+    configured_runner = lookup_runner_module(self, configured_runner)
+    validate_runner_config(configured_runner)
+    return { configured_runner }
+  elseif type(configured_runner) == "table" and #configured_runner > 0 then
+    local runner_configs = {}
+    for _, runner in ipairs(configured_runner) do
+      local runner_config = runner
+      if type(runner) == "string" then
+        runner_config = lookup_runner_module(self, runner)
+      end
+      validate_runner_config(runner_config)
+      table.insert(runner_configs, runner_config)
+    end
+    return runner_configs
+  end
+
+  validate_runner_config(configured_runner)
+  return { configured_runner }
 end
 
 --- @return runtest.RunnerConfig
 function Runner:runner_config()
-  local filetype = vim.bo.filetype
-  local runner_config = self.config.filetypes[filetype]
-
-  if runner_config == nil then
-    error({ message = "No test runner configured for " .. filetype, level = vim.log.levels.WARN })
-  end
-
-  if type(runner_config) == "string" then
-    runner_config = lookup_runner_module(self, runner_config)
-  elseif type(runner_config) == "table" and #runner_config > 0 then
-    local merged_config = {}
-    for _, runner_name in ipairs(runner_config) do
-      local runner_module = lookup_runner_module(self, runner_name)
-      merged_config = vim.tbl_extend("force", runner_module, merged_config)
-    end
-    runner_config = merged_config
-  end
-
-  validate_runner_config(runner_config)
-
-  return runner_config
+  local runner_configs = self:runner_configs()
+  return runner_configs[1]
 end
 
 --- @param command_spec runtest.CommandSpec
@@ -561,18 +576,25 @@ end
 --- @param command_spec_name string
 --- @return runtest.CommandSpec
 function Runner:resolve_command_spec(command_spec_name)
-  local runner_config = self:runner_config()
-
-  local command_fn = runner_config[command_spec_name]
-
-  if not command_fn then
-    error({
-      message = "No command " .. command_spec_name .. " for runner " .. runner_config.name,
-      level = vim.log.levels.WARN,
-    })
+  local runner_configs = self:runner_configs()
+  for _, runner_config in ipairs(runner_configs) do
+    local commands = runner_config.commands or {}
+    local command_fn = commands[command_spec_name]
+    if type(command_fn) == "function" then
+      return command_fn(runner_config)
+    end
   end
 
-  return command_fn(runner_config)
+  local runner_names = vim
+    .iter(runner_configs)
+    :map(function(runner_config)
+      return runner_config.name
+    end)
+    :join(", ")
+  error({
+    message = "No command " .. command_spec_name .. " for runners: " .. runner_names,
+    level = vim.log.levels.WARN,
+  })
 end
 
 --- @param command_spec_name string

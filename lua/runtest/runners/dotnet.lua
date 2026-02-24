@@ -4,6 +4,7 @@ local utils = require("runtest.utils")
 --- @class M: runtest.RunnerConfig
 local M = {
   name = "dotnet",
+  commands = {},
 }
 
 M.output_profile = {
@@ -135,7 +136,7 @@ local function dotnet_build_profile(runner_config, args)
 end
 
 --- @returns runtest.CommandSpec
-function M.line(runner_config)
+function M.commands.line(runner_config)
   local line_tests = csharp_ts.line_tests()
 
   if #line_tests == 0 then
@@ -149,7 +150,7 @@ function M.line(runner_config)
 end
 
 --- @returns runtest.CommandSpec
-function M.file(runner_config)
+function M.commands.file(runner_config)
   local file_tests = csharp_ts.file_tests()
 
   if #file_tests == 0 then
@@ -168,12 +169,12 @@ function M.file(runner_config)
 end
 
 --- @returns runtest.CommandSpec
-function M.all(runner_config)
+function M.commands.all(runner_config)
   return dotnet_test_profile(runner_config, {})
 end
 
 --- @returns runtest.CommandSpec
-function M.build(runner_config)
+function M.commands.build(runner_config)
   return dotnet_build_profile(runner_config, {})
 end
 

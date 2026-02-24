@@ -5,6 +5,7 @@ local utils = require("runtest.utils")
 local M = {}
 
 M.name = "cargo"
+M.commands = {}
 
 -- Match common Rust error locations in cargo test output
 --  - compiler messages: `--> src/lib.rs:10:5`
@@ -66,7 +67,7 @@ end
 --- @return string[]
 --- @param runner_config runtest.RunnerConfig
 --- @returns Profile
-function M.line_tests(runner_config)
+function M.commands.line_tests(runner_config)
   local names = rust_ts.line_tests()
 
   if #names == 0 then
@@ -80,7 +81,7 @@ end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns Profile
-function M.file_tests(runner_config)
+function M.commands.file_tests(runner_config)
   local names = rust_ts.file_tests()
 
   if #names == 0 then
@@ -92,7 +93,7 @@ end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns Profile
-function M.all_tests(runner_config)
+function M.commands.all_tests(runner_config)
   return cargo_profile(runner_config, {})
 end
 

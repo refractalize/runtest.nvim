@@ -15,9 +15,8 @@ local M = {
   },
   database_env_var = "DATABASE_URL",
   database_env_var_filter = "DATABASE_URL_*",
+  commands = {},
 }
-
-local run_test_context_buf_var = "run_test_context"
 
 --- @param runner_config runtest.RunnerConfig
 --- @return string
@@ -115,14 +114,14 @@ end
 
 --- @param runner_config runtest.RunnerConfig
 --- @return runtest.CommandSpec
-function M.line(runner_config)
+function M.commands.line(runner_config)
   local sql_query = sql_ts.current_query()
   return psql_command_spec(runner_config, { "-c", sql_query })
 end
 
 --- @param runner_config runtest.RunnerConfig
 --- @return runtest.CommandSpec
-function M.file(runner_config)
+function M.commands.file(runner_config)
   local filename = vim.fn.expand("%:p")
   if filename == "" then
     error({ message = "No file path for current buffer", level = vim.log.levels.ERROR })
@@ -134,7 +133,6 @@ end
 --- @param runner_config runtest.RunnerConfig
 function M.select_context(runner_config)
   local bufnr = vim.api.nvim_get_current_buf()
-  local env = vim.fn.environ()
   local env_keys = get_database_url_env_vars(runner_config)
 
   vim.ui.select(env_keys, {

@@ -7,6 +7,7 @@ local javascript_ts = require("runtest.languages.javascript")
 local M = {
   name = "jest",
   output_profile = {},
+  commands = {},
 }
 
 --- @param args string[]
@@ -71,13 +72,13 @@ end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns runtest.CommandSpec
-function M.all(runner_config)
+function M.commands.all(runner_config)
   return jest_profile({})
 end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns runtest.CommandSpec
-function M.line(runner_config)
+function M.commands.line(runner_config)
   local test_context = javascript_ts.line_tests()
   local pattern = vim.fn.join(test_context, " ")
   local test_filename = vim.fn.expand("%:p")

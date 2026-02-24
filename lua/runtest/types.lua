@@ -23,9 +23,9 @@
 --- @field name? string
 --- @field env? { [string]: string }
 --- @field output_profile? runtest.OutputProfile
---- @field file_patterns? (string | fun(command_spec: runtest.CommandSpec, line: string): ([string, string, string, string] | nil))[]
+--- @field commands? { [string]: fun(runner_config: runtest.RunnerConfig): runtest.CommandSpec }
 --- @field select_context? fun(runner_config: runtest.RunnerConfig)
---- @field [string] (fun(runner_config: runtest.RunnerConfig): runtest.CommandSpec) | (fun(runner_config: runtest.RunnerConfig)) | (fun(runner_config: runtest.RunnerConfig, context: string)) | nil
+--- @field set_context? fun(runner_config: runtest.RunnerConfig, context: string)
 local M = {}
 
 return M
