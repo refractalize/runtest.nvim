@@ -357,6 +357,12 @@ local default_profile = {
   colorize = true,
 }
 
+--- @param entry runtest.OutputHistoryEntry
+function OutputBuffer:get_output_profile_for_entry(entry)
+  local output_profile = entry.command_spec.output_profile or entry.command_spec.runner_config.output_profile
+  return vim.tbl_deep_extend("force", default_profile, output_profile or {})
+end
+
 function OutputBuffer:attach_buffer(buf, options)
   local buffer = self:new(buf, options)
   buffer:load()

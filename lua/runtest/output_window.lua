@@ -90,7 +90,7 @@ end
 
 --- @param run_entry runtest.OutputHistoryEntry
 function OutputWindow:set_entry(run_entry)
-  local output_profile = run_entry.command_spec.output_profile or run_entry.command_spec.runner_config.output_profile
+  local output_profile = OutputBuffer:get_output_profile_for_entry(run_entry)
   local header_lines = render_output_header_lines(run_entry)
   local output_buffer = run_entry.output_buffer
 
@@ -158,7 +158,7 @@ function OutputWindow:open(layout)
 end
 
 function OutputWindow:close()
-  local current_window = self.output_buffer:current_window()
+  local current_window = find_output_window_in_current_tab()
 
   if current_window then
     vim.api.nvim_win_close(current_window, true)

@@ -244,7 +244,7 @@ function Runner:tests_finished(entry)
   self.output_history:add_entry(entry)
   self:show_output_history_entry(entry)
 
-  local output_profile = entry.command_spec.output_profile or entry.command_spec.runner_config.output_profile
+  local output_profile = OutputBuffer:get_output_profile_for_entry(entry)
   local output_window_config = output_profile.output_window or self.config.windows.output
 
   if should_open_close(output_window_config.open, entry) then
@@ -581,7 +581,11 @@ function Runner:resolve_command_spec(command_spec_name)
     local commands = runner_config.commands or {}
     local command_fn = commands[command_spec_name]
     if type(command_fn) == "function" then
-      return command_fn(runner_config)
+      local command_spec = command_fn(runner_config)
+      if command_spec.runner_config == nil then
+        command_spec.runner_config = runner_config
+      end
+      return command_spec
     end
   end
 
