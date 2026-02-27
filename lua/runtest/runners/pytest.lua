@@ -60,7 +60,11 @@ end
 --- @returns runtest.CommandSpec
 function M.commands.line(runner_config)
   local filename = vim.fn.expand("%:p")
-  local test_pattern = vim.list_extend({ filename }, python_ts.test_path())
+  local test_path = python_ts.test_path()
+  if #test_path == 0 then
+    error({ message = "No test function or class found at the current line.", level = vim.log.levels.ERROR })
+  end
+  local test_pattern = vim.list_extend({ filename }, test_path)
   local args = { vim.fn.join(test_pattern, "::") }
 
   return pytest_profile(runner_config, args)

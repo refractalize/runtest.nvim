@@ -150,7 +150,7 @@ function Runner:setup(config)
 
     local runner_name = args.fargs[1]
     local shell_command = vim.list_slice(args.fargs, 2)
-    self:run_command(runner_name, shell_command)
+    self:run_command(runner_name, { shell_command })
   end, {
     nargs = "+",
     complete = function(arg_lead, cmd_line, cursor_pos)
@@ -267,6 +267,7 @@ function Runner:next_output_history()
   local entry = self.output_history:next_entry()
 
   if entry == nil then
+    error({ message = "No next output", level = vim.log.levels.INFO })
     return
   end
 
@@ -277,6 +278,7 @@ function Runner:previous_output_history()
   local entry = self.output_history:previous_entry()
 
   if entry == nil then
+    error({ message = "No previous output", level = vim.log.levels.INFO })
     return
   end
 
@@ -308,18 +310,18 @@ end
 
 --- @param runner_name string
 --- @param shell_command string[]
-function Runner:run_command(runner_name, shell_command)
+function Runner:run_command(runner_name, run_spec)
   local runner_config = lookup_runner_module(self, runner_name)
   local runner_command_spec = {
     runner_config = runner_config,
     output_profile = runner_config.output_profile,
     run_spec = function()
-      return { shell_command }
+      return run_spec
     end,
   }
 
   self:set_last_command_spec(runner_command_spec)
-  self:run_terminal(runner_command_spec, { shell_command })
+  self:run_terminal(runner_command_spec, run_spec)
 end
 
 --- @return boolean
@@ -827,15 +829,15 @@ function M.previous_output_history()
   end)
 end
 
-function M.execute_command(command)
-  error_wrapper(function()
-    vim.cmd(command)
-  end)
-end
-
 function M.attach_buffer(buf, runner_name)
   error_wrapper(function()
     runner:attach_buffer(buf, runner_name)
+  end)
+end
+
+function M.run_command(runner_name, run_spec)
+  error_wrapper(function()
+    runner:run_command(runner_name, run_spec)
   end)
 end
 

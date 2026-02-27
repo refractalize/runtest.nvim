@@ -32,10 +32,13 @@ end
 --- @param runner_config runtest.RunnerConfig
 --- @param args string[]
 --- @param start_config runtest.StartConfig
-local function run_cargo_test(runner_config, args, start_config)
+local function run_cargo_test(runner_config, cwd, args, start_config)
   return {
     utils.build_command_line({ "cargo", "test" }, cargo_args(runner_config, args, start_config)),
-    { env = vim.tbl_extend("force", { ["CARGO_TERM_COLOR"] = "always" }, runner_config.env or {}) },
+    {
+      env = vim.tbl_extend("force", { ["CARGO_TERM_COLOR"] = "always" }, runner_config.env or {}),
+      cwd = cwd,
+    },
   }
 end
 
@@ -49,6 +52,7 @@ end
 --- @param runner_config runtest.RunnerConfig
 --- @param args string[]
 local function cargo_profile(runner_config, args)
+  local cwd = vim.fs.root(0, "Cargo.toml")
   return {
     runner_config = runner_config,
     --- @param start_config runtest.StartConfig
@@ -57,7 +61,7 @@ local function cargo_profile(runner_config, args)
     end,
     --- @param start_config runtest.StartConfig
     run_spec = function(start_config)
-      return run_cargo_test(runner_config, args, start_config)
+      return run_cargo_test(runner_config, cwd, args, start_config)
     end,
   }
 end
@@ -67,7 +71,7 @@ end
 --- @return string[]
 --- @param runner_config runtest.RunnerConfig
 --- @returns Profile
-function M.commands.line_tests(runner_config)
+function M.commands.line(runner_config)
   local names = rust_ts.line_tests()
 
   if #names == 0 then
@@ -81,7 +85,7 @@ end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns Profile
-function M.commands.file_tests(runner_config)
+function M.commands.file(runner_config)
   local names = rust_ts.file_tests()
 
   if #names == 0 then
@@ -93,7 +97,7 @@ end
 
 --- @param runner_config runtest.RunnerConfig
 --- @returns Profile
-function M.commands.all_tests(runner_config)
+function M.commands.all(runner_config)
   return cargo_profile(runner_config, {})
 end
 

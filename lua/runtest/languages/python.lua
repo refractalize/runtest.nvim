@@ -1,5 +1,6 @@
 local utils = require('runtest.languages.utils')
 
+--- @returns string[]
 local function test_path()
   local buf = vim.api.nvim_get_current_buf()
 
