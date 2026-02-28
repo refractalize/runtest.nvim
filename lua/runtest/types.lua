@@ -18,11 +18,19 @@
 --- @field min? number --- The minimum size of the window in lines
 --- @field max? number --- The maximum size of the window in lines
 
+--- @class (exact) runtest.PartialOutputProfile
+--- @field file_patterns? (string | fun(line: string): ([string, string, string, string] | nil))[]
+--- @field external_file_patterns? (string | fun(line: string): (boolean))[]
+--- @field output_window? runtest.PartialOutputWindowConfig | nil
+--- @field filetype? string | nil
+--- @field render_header? boolean | nil
+--- @field colorize? boolean | nil
+
 --- @class (exact) runtest.PartialRunnerConfig
 --- @field args? string[]
 --- @field name? string
 --- @field env? { [string]: string }
---- @field output_profile? runtest.OutputProfile
+--- @field output_profile? runtest.PartialOutputProfile
 --- @field commands? { [string]: fun(runner_config: runtest.RunnerConfig): runtest.CommandSpec }
 --- @field select_context? fun(runner_config: runtest.RunnerConfig)
 --- @field set_context? fun(runner_config: runtest.RunnerConfig, context: string)
