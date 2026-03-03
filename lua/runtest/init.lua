@@ -102,6 +102,7 @@ function Runner.new()
       typescript = "jest",
       javascriptreact = "jest",
       javascript = "jest",
+      jq = "jq",
     },
     runners = {
       dotnet = require("runtest.runners.dotnet"),
@@ -109,6 +110,7 @@ function Runner.new()
       pytest = require("runtest.runners.pytest"),
       cargo = require("runtest.runners.cargo"),
       psql = require("runtest.runners.psql"),
+      jq = require("runtest.runners.jq"),
       jest = require("runtest.runners.jest"),
       vitest = require("runtest.runners.vitest"),
     },
