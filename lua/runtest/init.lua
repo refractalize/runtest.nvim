@@ -293,6 +293,9 @@ local function lookup_runner_module(self, runner_name)
   if not runner_module then
     error({ message = "No runner module for " .. runner_name, level = vim.log.levels.ERROR })
   end
+  if runner_module.name == nil then
+    runner_module.name = runner_name
+  end
   return runner_module
 end
 

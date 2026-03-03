@@ -11,9 +11,11 @@ M.commands = {}
 --  - compiler messages: `--> src/lib.rs:10:5`
 --  - panic lines: `src/lib.rs:10:5`
 --  - backtraces: `at src/lib.rs:10:5`
-M.file_patterns = {
-  "\\v^\\s*--\\> (\\f+):(\\d+):(\\d+)",
-  "\\v at (\\f+):(\\d+):(\\d+)",
+M.output_profile = {
+  file_patterns = {
+    "\\v^\\s*--\\> (\\f+):(\\d+):(\\d+)",
+    "\\v\\sat (\\f+):(\\d+):(\\d+)",
+  },
 }
 
 -- Treat toolchain/registry files as external for navigation convenience
@@ -78,7 +80,7 @@ function M.commands.line(runner_config)
     error({ message = "No tests found", level = vim.log.levels.WARN })
   end
 
-  local args = vim.list_extend(names, { '--', '--exact' })
+  local args = vim.list_extend(names, { "--", "--exact" })
 
   return cargo_profile(runner_config, args)
 end
