@@ -135,10 +135,15 @@ function M.select_context(runner_config)
   local bufnr = vim.api.nvim_get_current_buf()
   local env_keys = get_database_url_env_vars(runner_config)
 
+  local current_context = buffer_context.get_buffer_context(bufnr)
+
   vim.ui.select(env_keys, {
     prompt = "Select psql context",
     format_item = function(key)
-      return key
+      if key == current_context then
+        return "✓ " .. key
+      end
+      return "  " .. key
     end,
   }, function(selected_key)
     if selected_key == nil then
