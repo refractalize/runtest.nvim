@@ -131,6 +131,17 @@ function M.commands.file(runner_config)
 end
 
 --- @param runner_config runtest.RunnerConfig
+--- @return runtest.CommandSpec
+function M.commands.visual(runner_config)
+  local sql_query = utils.get_visual_text()
+  if sql_query == nil then
+    error({ message = "No visual selection", level = vim.log.levels.ERROR })
+  end
+
+  return psql_command_spec(runner_config, { "-c", sql_query })
+end
+
+--- @param runner_config runtest.RunnerConfig
 function M.select_context(runner_config)
   local bufnr = vim.api.nvim_get_current_buf()
   local env_keys = get_database_url_env_vars(runner_config)
