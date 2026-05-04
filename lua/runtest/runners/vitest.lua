@@ -1,4 +1,21 @@
 local javascript_ts = require("runtest.languages.javascript")
+local vitest_stack_pattern = "\\v%(\\S+\\s*\\(|at\\s+.{-}\\(|)(file://)?([^()[:space:]]+):(\\d+):(\\d+)\\)?$"
+
+--- @param line string
+--- @param cwd string
+--- @return [string, string, string, string] | nil
+local function match_vitest_stack_frame(line, cwd)
+  local matches = vim.fn.matchlist(line, vitest_stack_pattern)
+  if matches[1] == nil then
+    return nil
+  end
+
+  if matches[3]:sub(1, 1) ~= "/" then
+    matches[3] = cwd .. "/" .. matches[3]
+  end
+
+  return { matches[1], matches[3], matches[4], matches[5] }
+end
 
 --- @class JestProfile: runtest.CommandSpec
 --- @field cwd string
@@ -6,7 +23,11 @@ local javascript_ts = require("runtest.languages.javascript")
 --- @class M: runtest.RunnerConfig
 local M = {
   name = "vitest",
-  output_profile = {},
+  output_profile = {
+    file_patterns = {
+      vitest_stack_pattern,
+    },
+  },
   commands = {},
 }
 
@@ -51,11 +72,7 @@ function vitest_profile(args)
       file_patterns = {
         --- @param line string
         function(line)
-          local matches = vim.fn.matchlist(line, "\\v(\\f+):(\\d+):(\\d+)")
-          if matches[1] ~= nil then
-            matches[2] = cwd .. "/" .. matches[2]
-            return matches
-          end
+          return match_vitest_stack_frame(line, cwd)
         end,
       },
     },

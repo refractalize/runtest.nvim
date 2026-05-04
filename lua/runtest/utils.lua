@@ -2,7 +2,6 @@
 local function build_command_line(...)
   local command_line = {}
 
-
   for i, arguments in pairs({ ... }) do
     for i, arg in pairs(arguments or {}) do
       if type(i) == "string" then
@@ -23,40 +22,70 @@ local function build_command_line(...)
   return command_line
 end
 
---- @return string | nil
-local function get_visual_text()
+local function get_current_visual_range(mode)
   local mode = vim.fn.mode()
 
   if mode ~= "v" and mode ~= "V" and mode ~= "" then
     return nil
   end
 
-  local start_pos = vim.fn.getpos("v")
-  local end_pos = vim.fn.getpos(".")
+  local start_position = vim.fn.getpos("v")
+  local end_position = vim.fn.getpos(".")
 
-  -- getpos returns {bufnum, lnum, col, off} (1-based)
-  local start_line, start_col = start_pos[2], start_pos[3]
-  local end_line, end_col = end_pos[2], end_pos[3]
+  if
+    start_position[2] > end_position[2]
+    or (start_position[2] == end_position[2] and start_position[3] > end_position[3])
+  then
+    start_position, end_position = end_position, start_position
+  end
 
-  if start_line == 0 then
+  return {
+    start_position = start_position,
+    end_position = end_position,
+    mode = mode,
+  }
+end
+
+local function get_visual_lines()
+  local range = get_current_visual_range()
+  if range == nil then
     return nil
   end
 
-  -- ensure start is before end
-  if start_line > end_line or (start_line == end_line and start_col > end_col) then
-    start_line, end_line = end_line, start_line
-    start_col, end_col = end_col, start_col
-  end
+  local start_position = range.start_position
+  local end_position = range.end_position
+  local mode = range.mode
 
-  local lines = vim.api.nvim_buf_get_lines(0, start_line - 1, end_line, false)
-  if #lines == 0 then
+  local lines = vim.fn.getbufline("%", start_position[2], end_position[2])
+
+  if mode == "v" then
+    if #lines == 1 then
+      lines[1] = string.sub(lines[1], start_position[3], end_position[3])
+      return lines
+    else
+      lines[1] = string.sub(lines[1], start_position[3])
+      lines[#lines] = string.sub(lines[#lines], 1, end_position[3])
+      return lines
+    end
+  elseif mode == "V" then
+    return lines
+  elseif mode == "" then
+    return vim.tbl_map(function(line)
+      return string.sub(line, start_position[3], end_position[3])
+    end, lines)
+  else
     return nil
   end
+end
 
-  lines[#lines] = lines[#lines]:sub(1, end_col)
-  lines[1] = lines[1]:sub(start_col)
+local function get_visual_text()
+  local lines = get_visual_lines()
 
-  return table.concat(lines, "\n")
+  if lines ~= nil then
+    return vim.fn.join(lines, "\n")
+  else
+    return nil
+  end
 end
 
 return {

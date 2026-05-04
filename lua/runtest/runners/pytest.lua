@@ -13,6 +13,7 @@ M.output_profile = {
 
 M.name = "pytest"
 M.commands = {}
+M.codelens = {}
 
 --- @param runner_config runtest.RunnerConfig
 --- @param args string[]
@@ -92,6 +93,13 @@ function M.commands.project(runner_config)
   local args = { project_root }
 
   return pytest_profile(runner_config, args)
+end
+
+function M.codelens.get_lines(runner_config)
+  local test_lines = python_ts.get_test_lines()
+  return vim.tbl_map(function(line)
+    return { line = line, debug = true }
+  end, test_lines)
 end
 
 return M

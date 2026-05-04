@@ -1,23 +1,12 @@
 local utils = require("runtest.languages.utils")
 
-local function statement_query()
-  local query_variants = {
+local function get_query()
+  return vim.treesitter.query.parse(
+    "sql",
     [[
       (statement) @node
-    ]],
-    [[
-      (sql_statement) @node
-    ]],
-  }
-
-  for _, query_source in ipairs(query_variants) do
-    local ok, query = pcall(vim.treesitter.query.parse, "sql", query_source)
-    if ok then
-      return query
-    end
-  end
-
-  error("No supported SQL statement query for Treesitter SQL parser")
+    ]]
+  )
 end
 
 local function node_span_size(node)
@@ -31,7 +20,7 @@ end
 
 local function current_query()
   local buf = vim.api.nvim_get_current_buf()
-  local query = statement_query()
+  local query = get_query()
   local matches = utils.find_surrounding_matches(query)
 
   if #matches == 0 then
@@ -53,6 +42,19 @@ local function current_query()
   return sql_query
 end
 
+function get_query_lines()
+  local buf = vim.api.nvim_get_current_buf()
+  local query = get_query()
+  local matches = utils.find_matches(query)
+
+  return vim.tbl_map(function(match)
+    local node = match._node
+    local start_row = node:start()
+    return start_row + 1
+  end, matches)
+end
+
 return {
   current_query = current_query,
+  get_query_lines = get_query_lines,
 }

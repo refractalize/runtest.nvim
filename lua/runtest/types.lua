@@ -32,7 +32,10 @@
 --- @field env? { [string]: string }
 --- @field output_profile? runtest.PartialOutputProfile
 --- @field commands? { [string]: fun(runner_config: runtest.RunnerConfig): runtest.CommandSpec }
+--- @field default_context_env_var? string
+--- @field context_env_var_pattern? string | fun(env_var_name: string): boolean
 --- @field select_context? fun(runner_config: runtest.RunnerConfig)
+--- @field edit_context? fun(runner_config: runtest.RunnerConfig)
 --- @field set_context? fun(runner_config: runtest.RunnerConfig, context: string)
 local M = {}
 

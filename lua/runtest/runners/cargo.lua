@@ -6,6 +6,7 @@ local M = {}
 
 M.name = "cargo"
 M.commands = {}
+M.codelens = {}
 
 -- Match common Rust error locations in cargo test output
 --  - compiler messages: `--> src/lib.rs:10:5`
@@ -101,6 +102,17 @@ end
 --- @returns Profile
 function M.commands.all(runner_config)
   return cargo_profile(runner_config, {})
+end
+
+--- Get line numbers for codelens based on test functions in the current buffer
+--- @param runner_config runtest.RunnerConfig
+--- @returns runtest.CodelensLine[]
+function M.codelens.get_lines(runner_config)
+  local lines = rust_ts.get_test_lines()
+
+  return vim.tbl_map(function(line)
+    return { line = line, debug = true }
+  end, lines)
 end
 
 return M

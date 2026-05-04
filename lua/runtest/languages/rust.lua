@@ -224,7 +224,28 @@ local function file_tests()
   return { prefix .. "::" }
 end
 
+local function get_test_lines()
+  local query = test_query()
+  local matches = utils.find_matches(query)
+
+  local buf = vim.api.nvim_get_current_buf()
+  local test_lines = vim
+    .iter(matches)
+    :filter(function(match)
+      return has_test_attribute(match._node, buf)
+    end)
+    :map(function(match)
+      local node = match.test_name[1].node
+      local start_row, _, _ = node:start()
+      return start_row + 1
+    end)
+    :totable()
+
+  return test_lines
+end
+
 return {
   line_tests = line_tests,
   file_tests = file_tests,
+  get_test_lines = get_test_lines,
 }

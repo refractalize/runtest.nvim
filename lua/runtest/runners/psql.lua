@@ -13,9 +13,10 @@ local M = {
       open = "always",
     },
   },
-  database_env_var = "DATABASE_URL",
-  database_env_var_filter = "DATABASE_URL_*",
+  default_context_env_var = "DATABASE_URL",
+  context_env_var_pattern = "*_DATABASE_URL",
   commands = {},
+  codelens = {},
 }
 
 --- @param runner_config runtest.RunnerConfig
@@ -61,7 +62,7 @@ end
 
 function resolve_database_url(runner_config)
   local bufnr = vim.api.nvim_get_current_buf()
-  local context = buffer_context.get_buffer_context(bufnr)
+  local context = buffer_context.get_buffer_context(bufnr, runner_config)
   if type(context) == "string" and context ~= "" then
     return resolve_database_url_var(context)
   end
@@ -90,8 +91,10 @@ end
 --- @param start_config runtest.StartConfig
 --- @return runtest.RunSpec
 local function run_psql(psql_args, runner_config, start_config)
+  local database_url = buffer_context.get_buffer_context(0, runner_config)
+
   local command = utils.build_command_line(
-    { "psql", resolve_database_url(runner_config), "-X", "-v", "ON_ERROR_STOP=1" },
+    { "psql", database_url, "-X", "-v", "ON_ERROR_STOP=1" },
     psql_args,
     runner_config.args,
     start_config.args
@@ -141,29 +144,11 @@ function M.commands.visual(runner_config)
   return psql_command_spec(runner_config, { "-c", sql_query })
 end
 
---- @param runner_config runtest.RunnerConfig
-function M.select_context(runner_config)
-  local bufnr = vim.api.nvim_get_current_buf()
-  local env_keys = get_database_url_env_vars(runner_config)
-
-  local current_context = buffer_context.get_buffer_context(bufnr)
-
-  vim.ui.select(env_keys, {
-    prompt = "Select psql context",
-    format_item = function(key)
-      if key == current_context then
-        return "✓ " .. key
-      end
-      return "  " .. key
-    end,
-  }, function(selected_key)
-    if selected_key == nil then
-      return
-    end
-
-    buffer_context.set_buffer_context(bufnr, selected_key)
-    vim.notify("psql context set to " .. selected_key, vim.log.levels.INFO)
-  end)
+function M.codelens.get_lines(runner_config)
+  local query_lines = sql_ts.get_query_lines()
+  return vim.tbl_map(function(line)
+    return { line = line }
+  end, query_lines)
 end
 
 return M

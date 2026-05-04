@@ -19,13 +19,21 @@ local buffer_context = require("runtest.buffer_context")
 --- @field runner_config runtest.RunnerConfig
 --- @field output_profile runtest.OutputProfile?
 
+--- @class runtest.CodeLensLine
+--- @field line integer
+--- @field debug? boolean
+
 --- @class runtest.RunnerConfig
 --- @field args string[]?
 --- @field name string
 --- @field env { [string]: string }?
 --- @field output_profile runtest.OutputProfile
 --- @field commands { [string]: fun(runner_config: runtest.RunnerConfig): runtest.CommandSpec }?
+--- @field codelens { get_lines: fun(runner_config: runtest.RunnerConfig): runtest.CodeLensLine[] }?
+--- @field default_context_env_var? string
+--- @field context_env_var_pattern? string | fun(env_var_name: string): boolean
 --- @field select_context? fun(runner_config: runtest.RunnerConfig)
+--- @field edit_context? fun(runner_config: runtest.RunnerConfig)
 --- @field set_context? fun(runner_config: runtest.RunnerConfig, context: string)
 
 --- @alias runtest.OutputWindowShowCondition 'always' | 'on_failure' | 'on_success' | 'never' | function(entry: runtest.OutputHistoryEntry): boolean
@@ -169,7 +177,94 @@ function Runner:setup(config)
     end,
   })
 
+  if config.codelens then
+    self:start_codelens()
+  end
+
   M.config = self.config
+end
+
+function Runner:start_codelens()
+  local filetypes = vim.tbl_keys(self.config.filetypes)
+
+  vim.lsp.config("runtest-codelens", {
+    cmd = function()
+      return {
+        request = function(method, params, callback)
+          local status, err = pcall(function()
+            if method == "initialize" then
+              callback(nil, {
+                capabilities = { codeLensProvider = {} },
+                serverInfo = {
+                  name = "runtest-codelens",
+                  version = "0.1.0",
+                },
+              })
+            elseif method == "textDocument/codeLens" then
+              local lenses = {}
+
+              if not self:has_runner_config() then
+                callback(nil, lenses)
+                return
+              end
+
+              local runner_configs = self:runner_configs()
+              for _, runner_config in pairs(runner_configs) do
+                if runner_config.codelens then
+                  local codelens_lines = runner_config.codelens.get_lines(runner_config)
+                  for _, codelens_line in ipairs(codelens_lines) do
+                    local lnum = codelens_line.line - 1
+                    table.insert(lenses, {
+                      range = { start = { line = lnum, character = 0 }, ["end"] = { line = lnum, character = 0 } },
+                      command = { title = "run", command = "runtest.run", arguments = { lnum } },
+                    })
+                    if codelens_line.debug then
+                      table.insert(lenses, {
+                        range = { start = { line = lnum, character = 0 }, ["end"] = { line = lnum, character = 0 } },
+                        command = { title = "debug", command = "runtest.debug", arguments = { lnum } },
+                      })
+                    end
+                  end
+                end
+              end
+              callback(nil, lenses)
+            else
+              callback({ code = -32601, message = "method not found" }, nil)
+            end
+          end)
+
+          if not status then
+            if type(err) == "table" and type(err.message) == "string" then
+              callback({ code = -32603, message = err.message }, nil)
+            else
+              callback({ code = -32603, message = tostring(err) }, nil)
+            end
+          end
+        end,
+        notify = function() end,
+        is_closing = function()
+          return false
+        end,
+        terminate = function() end,
+      }
+    end,
+
+    filetypes = filetypes,
+  })
+
+  vim.lsp.enable("runtest-codelens")
+
+  vim.lsp.commands["runtest.run"] = function(cmd)
+    vim.schedule(function()
+      require("runtest").run("line")
+    end)
+  end
+
+  vim.lsp.commands["runtest.debug"] = function(cmd)
+    vim.schedule(function()
+      require("runtest").debug("line")
+    end)
+  end
 end
 
 --- @param command_spec runtest.CommandSpec
@@ -378,7 +473,8 @@ local function parse_job_spec(job_spec)
 end
 
 local function follow_latest_output()
-  vim.cmd.normal("G")
+  -- FIXME: not sure why this isn't working with the codelens
+  -- vim.cmd.normal("G")
 end
 
 --- @param command_spec runtest.CommandSpec
@@ -519,6 +615,11 @@ local function validate_runner_config(runner_config)
   end
 end
 
+function Runner:has_runner_config()
+  local filetype = vim.bo.filetype
+  return self.config.filetypes[filetype] ~= nil
+end
+
 --- @return runtest.RunnerConfig[]
 function Runner:runner_configs()
   local filetype = vim.bo.filetype
@@ -603,7 +704,7 @@ function Runner:resolve_command_spec(command_spec_name)
     end)
     :join(", ")
   error({
-    message = "No command " .. command_spec_name .. " for runners: " .. runner_names,
+    message = "No command `" .. command_spec_name .. "` for runners: `" .. runner_names .. "`",
     level = vim.log.levels.WARN,
   })
 end
@@ -718,10 +819,25 @@ function M.select_context()
     local select_context = runner_config.select_context
 
     if type(select_context) ~= "function" then
-      error({ message = "Current runner does not support context selection", level = vim.log.levels.WARN })
+      buffer_context.select_context(vim.api.nvim_get_current_buf(), runner_config)
+      return
     end
 
     select_context(runner_config)
+  end)
+end
+
+function M.edit_context()
+  error_wrapper(function()
+    local runner_config = runner:runner_config()
+    local edit_context = runner_config.edit_context
+
+    if type(edit_context) ~= "function" then
+      buffer_context.edit_context(vim.api.nvim_get_current_buf())
+      return
+    end
+
+    edit_context(runner_config)
   end)
 end
 
@@ -845,5 +961,7 @@ function M.run_command(runner_name, run_spec)
     runner:run_command(runner_name, run_spec)
   end)
 end
+
+M.runner = runner
 
 return M
