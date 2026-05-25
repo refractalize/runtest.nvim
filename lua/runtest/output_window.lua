@@ -141,19 +141,21 @@ function OutputWindow:is_open()
   return find_output_window_in_current_tab() ~= nil
 end
 
---- @param layout runtest.WindowLayout | nil
+--- @param layout runtest.WindowLayout
 function OutputWindow:open(layout)
   local current_window = find_output_window_in_current_tab()
 
   if current_window then
-    vim.api.nvim_set_current_win(current_window)
+    if layout.focus ~= false then
+      vim.api.nvim_set_current_win(current_window)
+    end
     local current_buf = vim.api.nvim_win_get_buf(current_window)
     if current_buf ~= self.output_buffer.buf then
       vim.api.nvim_win_set_buf(current_window, self.output_buffer.buf)
     end
   else
-    window_layout.new_window(layout)
-    vim.api.nvim_set_current_buf(self.output_buffer.buf)
+    local output_window = window_layout.new_window(layout)
+    vim.api.nvim_win_set_buf(output_window, self.output_buffer.buf)
   end
 end
 

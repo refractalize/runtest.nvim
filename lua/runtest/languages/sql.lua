@@ -18,25 +18,47 @@ local function trim(text)
   return text:gsub("^%s+", ""):gsub("%s+$", "")
 end
 
-local function current_query()
-  local buf = vim.api.nvim_get_current_buf()
-  local query = get_query()
-  local matches = utils.find_surrounding_matches(query)
+--- @param line_number integer
+--- @param node TSNode
+--- @return boolean
+local function node_contains_line(line_number, node)
+  local start_row, _, end_row, _ = node:range()
+  local row = line_number - 1
+  return start_row <= row and row <= end_row
+end
 
-  if #matches == 0 then
-    error({ message = "No SQL query found at cursor", level = vim.log.levels.WARN })
+--- @param bufnr integer
+--- @param line_number integer
+--- @return string
+local function current_query(bufnr, line_number)
+  if type(bufnr) ~= "number" or bufnr <= 0 then
+    error({ message = "A valid buffer number is required", level = vim.log.levels.ERROR })
   end
 
-  local best_match = matches[1]
-  for i = 2, #matches do
-    if node_span_size(matches[i]._node) < node_span_size(best_match._node) then
-      best_match = matches[i]
+  if type(line_number) ~= "number" or line_number <= 0 then
+    error({ message = "A valid line number is required", level = vim.log.levels.ERROR })
+  end
+
+  local query = get_query()
+  local matches = utils.find_matches(query, nil, bufnr)
+  local surrounding_matches = vim.tbl_filter(function(match)
+    return node_contains_line(line_number, match._node)
+  end, matches)
+
+  if #surrounding_matches == 0 then
+    error({ message = "No SQL query found at line " .. line_number, level = vim.log.levels.WARN })
+  end
+
+  local best_match = surrounding_matches[1]
+  for i = 2, #surrounding_matches do
+    if node_span_size(surrounding_matches[i]._node) < node_span_size(best_match._node) then
+      best_match = surrounding_matches[i]
     end
   end
 
-  local sql_query = trim(vim.treesitter.get_node_text(best_match._node, buf))
+  local sql_query = trim(vim.treesitter.get_node_text(best_match._node, bufnr))
   if sql_query == "" then
-    error({ message = "No SQL query found at cursor", level = vim.log.levels.WARN })
+    error({ message = "No SQL query found at line " .. line_number, level = vim.log.levels.WARN })
   end
 
   return sql_query
