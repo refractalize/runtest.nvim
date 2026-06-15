@@ -10,20 +10,19 @@ OutputWindow.__index = OutputWindow
 --- @returns string[]
 local function render_command_line(job_spec)
   local env = (job_spec[2] or {}).env
-  local env_str = env
-    and vim.fn.join(
-      vim.tbl_map(function(key)
-        return key .. "=" .. vim.fn.shellescape(env[key])
-      end, vim.tbl_keys(env)),
-      " "
-    )
+  local env_lines = vim.tbl_map(function(key)
+    return "Env: " .. key .. "=" .. vim.fn.shellescape(env[key])
+  end, vim.tbl_keys(env))
+
   local command_str = vim.fn.join(vim.tbl_map(function(arg)
     return vim.fn.shellescape(arg)
   end, job_spec[1]))
 
-  return {
-    "Command: " .. (env_str and env_str .. " " .. command_str or command_str),
-  }
+  local command_lines = vim.tbl_map(function(line)
+    return "Cmd: " .. line
+  end, vim.split(command_str, "\n", { plain = true }))
+
+  return vim.list_extend(env_lines, command_lines)
 end
 
 local function time_diff_in_microseconds(start_time, end_time)
